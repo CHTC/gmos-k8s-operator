@@ -66,6 +66,8 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 		if err := p.onUpdate(repoUpdate); err != nil {
 			log.Error(err, "Error occurred while handling repo update")
 		}
+	} else {
+		log.Info("No updates to repo")
 	}
 
 }
@@ -81,6 +83,7 @@ func (p *GlideinManagerPoller) DoHandshakeWithRetry(retries int, delay time.Dura
 	for i := 0; i < retries; i++ {
 		if err := p.client.DoHandshake(8071); err != nil {
 			fmt.Printf("handshake with GMOS failed: %v", err)
+			errs = append(errs, err)
 			time.Sleep(delay)
 		} else {
 			return nil
@@ -110,4 +113,11 @@ func AddGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, upd
 
 	}
 	return nil
+}
+
+func RemoveGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+	if poller, exists := activeGlideinManagerPollers[pilotSet.Namespace]; exists {
+		delete(activeGlideinManagerPollers, pilotSet.Namespace)
+		poller.StopPolling()
+	}
 }

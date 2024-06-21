@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	gmosClient "github.com/chtc/gmos-client/client"
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
@@ -129,10 +130,11 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 				return ctrl.Result{}, err
 			}
 		}
-		// AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
-		// 	log.Info("Got repo update!")
-		// 	return nil
-		// })
+		AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
+			log.Info("Got repo update!")
+			return nil
+		})
+		log.Info("Updated Deployment for PilotSet")
 	} else if apierrors.IsNotFound(err) {
 		// Deployment doesn't exist, create it
 		newDep, err := r.makeDeploymentForPilotSet(pilotSet)
@@ -142,10 +144,11 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		if err := r.Create(ctx, newDep); err != nil {
 			log.Error(err, "Failed to create Deployment for PilotSet")
 		}
-		// AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
-		// 	log.Info("Got repo update!")
-		// 	return nil
-		// })
+		AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
+			log.Info("Got repo update!")
+			return nil
+		})
+		log.Info("Created Deployment for PilotSet")
 	} else {
 		log.Error(err, "Unable to check status of Deployment for PilotSet")
 		return ctrl.Result{}, err
@@ -156,6 +159,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 
 func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
 	// TODO
+	RemoveGlideinManagerWatcher(pilotSet)
 }
 
 func labelsForPilotSet(name string) map[string]string {
