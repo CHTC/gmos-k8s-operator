@@ -1,0 +1,12 @@
+apiVersion: gmos.chtc.wisc.edu/v1alpha1
+kind: GlideinManagerPilotSet
+metadata:
+  labels:
+    app.kubernetes.io/name: glideinmanagerpilotset
+    app.kubernetes.io/instance: glideinmanagerpilotset-sample
+    app.kubernetes.io/part-of: gmos-k8s-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: gmos-k8s-operator
+  name: glideinmanagerpilotset-sample
+spec:
+  # TODO(user): Add fields here
