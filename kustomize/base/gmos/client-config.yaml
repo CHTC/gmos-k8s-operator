@@ -1,0 +1,2 @@
+clients:
+  - name: sample-operator-manager-webservice.sample-operator-system.svc.cluster.local

@@ -19,9 +19,10 @@ package controller
 import (
 	"context"
 
-	gmosClient "github.com/chtc/gmos-client/client"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,7 +45,7 @@ type GlideinManagerPilotSetReconciler struct {
 //+kubebuilder:rbac:groups=gmos.chtc.wisc.edu,resources=glideinmanagerpilotsets/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gmos.chtc.wisc.edu,resources=glideinmanagerpilotsets/finalizers,verbs=update
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
-//+kubebuilder:rbac:groups=core,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -128,10 +129,10 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 				return ctrl.Result{}, err
 			}
 		}
-		AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
-			log.Info("Got repo update!")
-			return nil
-		})
+		// AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
+		// 	log.Info("Got repo update!")
+		// 	return nil
+		// })
 	} else if apierrors.IsNotFound(err) {
 		// Deployment doesn't exist, create it
 		newDep, err := r.makeDeploymentForPilotSet(pilotSet)
@@ -141,10 +142,10 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		if err := r.Create(ctx, newDep); err != nil {
 			log.Error(err, "Failed to create Deployment for PilotSet")
 		}
-		AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
-			log.Info("Got repo update!")
-			return nil
-		})
+		// AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
+		// 	log.Info("Got repo update!")
+		// 	return nil
+		// })
 	} else {
 		log.Error(err, "Unable to check status of Deployment for PilotSet")
 		return ctrl.Result{}, err
@@ -157,13 +158,78 @@ func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alph
 	// TODO
 }
 
-func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (*appsv1.Deployment, error) {
-	// TODO
-	return &appsv1.Deployment{}, nil
+func labelsForPilotSet(name string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       "GlideinManagerPilotSet",
+		"app.kubernetes.io/instance":   name,
+		"app.kubernetes.io/created-by": "controller-manager",
+	}
+
 }
-func (r *GlideinManagerPilotSetReconciler) updateDeploymentForPilotSet(deployment *appsv1.Deployment, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (bool, error) {
+
+func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (*appsv1.Deployment, error) {
+	labelsMap := labelsForPilotSet(pilotSet.Name)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pilotSet.Name,
+			Namespace: pilotSet.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &[]int32{1}[0],
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labelsMap,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labelsMap,
+				},
+				Spec: corev1.PodSpec{
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: &[]bool{true}[0],
+						// IMPORTANT: seccomProfile was introduced with Kubernetes 1.19
+						// If you are looking for to produce solutions to be supported
+						// on lower versions you must remove this option.
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
+					Containers: []corev1.Container{{
+						Image:           "ubuntu:22.04",
+						Name:            "sleeper",
+						ImagePullPolicy: corev1.PullIfNotPresent,
+						// Ensure restrictive context for the container
+						// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
+						SecurityContext: &corev1.SecurityContext{
+							RunAsNonRoot:             &[]bool{true}[0],
+							RunAsUser:                &[]int64{1001}[0],
+							AllowPrivilegeEscalation: &[]bool{false}[0],
+							Capabilities: &corev1.Capabilities{
+								Drop: []corev1.Capability{
+									"ALL",
+								},
+							},
+						},
+						Command: []string{"sleep", "120"},
+					}},
+				},
+			},
+		},
+	}
+
+	if err := ctrl.SetControllerReference(pilotSet, dep, r.Scheme); err != nil {
+		return nil, err
+	}
+	return dep, nil
+}
+func (r *GlideinManagerPilotSetReconciler) updateDeploymentForPilotSet(dep *appsv1.Deployment, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (bool, error) {
 	// TODO
-	return true, nil
+	updated := false
+	if *dep.Spec.Replicas != pilotSet.Spec.Size {
+		dep.Spec.Replicas = &pilotSet.Spec.Size
+		updated = true
+	}
+
+	return updated, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

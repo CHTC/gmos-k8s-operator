@@ -43,7 +43,8 @@ spec:
                 type: string
               size:
                 description: size is the count of pilots to include in this set
-                type: string
+                format: int32
+                type: integer
             type: object
           status:
             description: GlideinManagerPilotSetStatus defines the observed state of

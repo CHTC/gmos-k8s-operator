@@ -1,0 +1,8 @@
+namespace: dev
+
+bases:
+  - ../base/gmos
+
+resources:
+  - namespace.yaml
+  - pilot-set.yaml

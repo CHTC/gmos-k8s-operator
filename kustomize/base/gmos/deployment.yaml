@@ -1,0 +1,69 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gm-file-server
+  labels:
+    app: gm-file-server
+spec:
+  selector:
+    matchLabels:
+      app: gm-file-server
+  template:
+    metadata:
+      labels:
+        app: gm-file-server
+    spec:
+      containers:
+      - name: gm-file-server
+        image: hub.opensciencegrid.org/mwestphall/glidein-manager-file-server:latest
+        env:
+        - name: REPO_URL
+          value: git@github.com:CHTC/gm-file-server.git
+        - name: SSH_KEY
+          value: /mnt/ssh/upstream-repo-key
+        volumeMounts:
+        - name: gm-file-server-ssh-key
+          mountPath: /mnt/ssh/
+        - name: gm-file-server-config
+          mountPath: /etc/gm-file-server/config
+        - name: data-vol
+          mountPath: /etc/gm-file-server/data
+        resources:
+          limits:
+            memory: 4Gi
+            cpu: "1"
+          requests:
+            memory: 2Gi
+            cpu: "1"
+      volumes:
+      - name: gm-file-server-ssh-key
+        secret:
+          secretName: gm-file-server-ssh-key
+      - name: data-vol
+        emptyDir:
+          sizeLimit: 500Mi
+      - name: gm-file-server-config
+        configMap:
+          name: gmos-client-config
+          items:
+          - key: client-config.yaml
+            path: config.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gm-file-server-webservice
+  annotations:
+    metallb.universe.tf/address-pool: default
+  labels:
+    app: gm-file-server
+spec:
+  ports:
+  - port: 80
+    name: http
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: gm-file-server
+  sessionAffinity: None

@@ -34,7 +34,7 @@ type GlideinManagerPilotSetSpec struct {
 	GlideinManagerUrl string `json:"glideinManagerUrl,omitempty"`
 
 	// size is the count of pilots to include in this set
-	Size string `json:"size,omitempty"`
+	Size int32 `json:"size,omitempty"`
 }
 
 // GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet

@@ -1,0 +1,16 @@
+bases:
+  - ../../config/default
+
+images:
+- name: controller
+  newName: hub.opensciencegrid.org/mwestphall/gmos-k8s-operator
+
+patchesJson6902:
+  - target:
+      kind: Deployment
+      version: v1
+      name: controller-manager
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/1/imagePullPolicy
+        value: Never
