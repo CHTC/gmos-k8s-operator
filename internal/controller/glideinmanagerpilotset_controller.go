@@ -131,8 +131,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 			}
 		}
 		AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
-			log.Info("Got repo update!")
-			return nil
+			return r.updateDeploymentFromGitCommit(ctx, pilotSet.Name, pilotSet.Namespace, ru)
 		})
 		log.Info("Updated Deployment for PilotSet")
 	} else if apierrors.IsNotFound(err) {
@@ -145,8 +144,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 			log.Error(err, "Failed to create Deployment for PilotSet")
 		}
 		AddGlideinManagerWatcher(pilotSet, func(ru gmosClient.RepoUpdate) error {
-			log.Info("Got repo update!")
-			return nil
+			return r.updateDeploymentFromGitCommit(ctx, pilotSet.Name, pilotSet.Namespace, ru)
 		})
 		log.Info("Created Deployment for PilotSet")
 	} else {
@@ -168,7 +166,27 @@ func labelsForPilotSet(name string) map[string]string {
 		"app.kubernetes.io/instance":   name,
 		"app.kubernetes.io/created-by": "controller-manager",
 	}
+}
 
+func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
+	log := log.FromContext(ctx)
+	log.Info("Got repo update!")
+	dep := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, dep); err == nil {
+		// update a label on the deployment
+		dep.Spec.Template.ObjectMeta.Labels["git-hash"] = gitUpdate.CurrentCommit
+		if err := r.Update(ctx, dep); err != nil {
+			log.Error(err, "Failed to update Deployment for PilotSet based on git update")
+			return err
+		}
+		return nil
+	} else if apierrors.IsNotFound(err) {
+		log.Info("Deployment not found for git update, must have been deleted")
+		return nil
+	} else {
+		log.Error(err, "Unable to get deployment")
+		return err
+	}
 }
 
 func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (*appsv1.Deployment, error) {
