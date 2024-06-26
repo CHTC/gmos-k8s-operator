@@ -3,12 +3,14 @@ package controller
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	gmosClient "github.com/chtc/gmos-client/client"
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -115,18 +117,42 @@ func labelsForPilotSet(name string) map[string]string {
 	}
 }
 
+func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string) (PilotSetNamespaceConfig, error) {
+	manifest := PilotSetManifiest{}
+	data, err := os.ReadFile(filepath.Join(gitUpdate.Path, "glidein-manifest.yaml"))
+	if err != nil {
+		return PilotSetNamespaceConfig{}, err
+	}
+
+	if err := yaml.Unmarshal(data, manifest); err != nil {
+		return PilotSetNamespaceConfig{}, err
+	}
+	for _, config := range manifest.Manifests {
+		if config.Namespace == namespace {
+			return config, nil
+		}
+	}
+	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v", namespace)
+}
+
 func (r *GlideinManagerPilotSetReconciler) updateSecretFromGitCommit(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {
 	// update a label on the deployment
-	fileMap := make(map[string][]byte)
-	listing, err := os.ReadDir(gitUpdate.Path)
+	config, err := readManifestForNamespace(gitUpdate, sec.Namespace)
 	if err != nil {
 		return err
 	}
+
+	listing, err := os.ReadDir(filepath.Join(gitUpdate.Path, config.Volume.Src))
+	if err != nil {
+		return err
+	}
+
+	fileMap := make(map[string][]byte)
 	for _, entry := range listing {
 		if entry.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(fmt.Sprintf("%v/%v", gitUpdate.Path, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(gitUpdate.Path, config.Volume.Src, entry.Name()))
 		if err != nil {
 			return err
 		}
@@ -138,5 +164,14 @@ func (r *GlideinManagerPilotSetReconciler) updateSecretFromGitCommit(sec *corev1
 
 func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(dep *appsv1.Deployment, gitUpdate gmosClient.RepoUpdate) error {
 	dep.Spec.Template.ObjectMeta.Labels["git-hash"] = gitUpdate.CurrentCommit
+	// update a label on the deployment
+	config, err := readManifestForNamespace(gitUpdate, dep.Namespace)
+	if err != nil {
+		return err
+	}
+	// Todo error handling here
+	dep.Spec.Template.Spec.Containers[0].Image = config.Image
+	dep.Spec.Template.Spec.Containers[0].Command = config.Command
+	dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
 	return nil
 }
