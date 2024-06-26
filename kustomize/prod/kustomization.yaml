@@ -1,0 +1,5 @@
+namespace: prod
+
+resources:
+  - namespace.yaml
+  - pilot-set.yaml
