@@ -19,7 +19,7 @@ spec:
         image: hub.opensciencegrid.org/mwestphall/glidein-manager-file-server:latest
         env:
         - name: REPO_URL
-          value: git@github.com:CHTC/gm-file-server.git
+          value: git@github.com:mwestphall/glidein-manager-test-upstream.git
         - name: SSH_KEY
           value: /mnt/ssh/upstream-repo-key
         volumeMounts:
