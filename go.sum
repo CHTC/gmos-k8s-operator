@@ -17,8 +17,10 @@ github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6r
 github.com/bwesterb/go-ristretto v1.2.3/go.mod h1:fUIoIZaG73pV5biE2Blr2xEzDoMj7NFEuV9ekS419A0=
 github.com/cespare/xxhash/v2 v2.2.0 h1:DC2CZ1Ep5Y4k3ZQ899DldepgrayRUGE6BBZ/cd9Cj44=
 github.com/cespare/xxhash/v2 v2.2.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
-github.com/chtc/gmos-client v0.0.0-20240619163416-131a6a480c6b h1:U/AS5PiwcamTrfV/AmSnghYmGpFyI+TSaTMIRhl1GWQ=
-github.com/chtc/gmos-client v0.0.0-20240619163416-131a6a480c6b/go.mod h1:Kfy2IbJ9W/UgD9nAfLSRwuEDd0TAIAxVPn85L1FSuuo=
+github.com/chtc/gmos-client v0.0.0-20240625215454-4fe18c4664c8 h1:Zft8Jcl6r+BZlI5ICsI0IVDjuplFP42PmSMMmcRI6tI=
+github.com/chtc/gmos-client v0.0.0-20240625215454-4fe18c4664c8/go.mod h1:Kfy2IbJ9W/UgD9nAfLSRwuEDd0TAIAxVPn85L1FSuuo=
+github.com/chtc/gmos-client v0.0.0-20240626145624-ebb20db7f9bf h1:DFzuuSj3ad38WSRPTkcaGcPWJGXhfbUf4UBs3baceIw=
+github.com/chtc/gmos-client v0.0.0-20240626145624-ebb20db7f9bf/go.mod h1:Kfy2IbJ9W/UgD9nAfLSRwuEDd0TAIAxVPn85L1FSuuo=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=

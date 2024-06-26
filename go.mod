@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.11
 
 require (
-	github.com/chtc/gmos-client v0.0.0-20240619163416-131a6a480c6b
+	github.com/chtc/gmos-client v0.0.0-20240626145624-ebb20db7f9bf
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.10
 	k8s.io/api v0.28.3
