@@ -175,7 +175,10 @@ func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx cont
 
 	sec := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, sec); err == nil {
-		r.updateSecretFromGitCommit(sec, gitUpdate)
+		if err := r.updateSecretFromGitCommit(sec, gitUpdate); err != nil {
+			log.Error(err, "Failed to modify Secret schema for PilotSet based on git update")
+			return err
+		}
 		if err := r.Update(ctx, sec); err != nil {
 			log.Error(err, "Failed to update Secret for PilotSet based on git update")
 			return err
@@ -191,7 +194,10 @@ func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx cont
 	dep := &appsv1.Deployment{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, dep); err == nil {
 		// update a label on the deployment
-		r.updateDeploymentFromGitCommit(dep, gitUpdate)
+		if err := r.updateDeploymentFromGitCommit(dep, gitUpdate); err != nil {
+			log.Error(err, "Failed to modify Deployment schema for PilotSet based on git update")
+			return err
+		}
 		if err := r.Update(ctx, dep); err != nil {
 			log.Error(err, "Failed to update Deployment for PilotSet based on git update")
 			return err

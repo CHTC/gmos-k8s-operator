@@ -124,7 +124,7 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 		return PilotSetNamespaceConfig{}, err
 	}
 
-	if err := yaml.Unmarshal(data, manifest); err != nil {
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
 		return PilotSetNamespaceConfig{}, err
 	}
 	for _, config := range manifest.Manifests {
@@ -132,7 +132,7 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 			return config, nil
 		}
 	}
-	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v", namespace)
+	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
 }
 
 func (r *GlideinManagerPilotSetReconciler) updateSecretFromGitCommit(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {

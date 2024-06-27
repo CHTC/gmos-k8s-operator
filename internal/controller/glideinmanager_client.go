@@ -88,7 +88,7 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 		log.Info(fmt.Sprintf("Updated to commit %v", repoUpdate.CurrentCommit))
 		for namespace, callback := range p.updateCallbacks {
 			if err := callback(repoUpdate); err != nil {
-				log.Error(err, "Error occurred while handling repo update for namespace %v", namespace)
+				log.Error(err, fmt.Sprintf("Error occurred while handling repo update for namespace %v", namespace))
 			}
 		}
 	} else {
