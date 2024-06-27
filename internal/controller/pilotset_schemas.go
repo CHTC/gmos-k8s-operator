@@ -162,16 +162,44 @@ func (r *GlideinManagerPilotSetReconciler) updateSecretFromGitCommit(sec *corev1
 	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(dep *appsv1.Deployment, gitUpdate gmosClient.RepoUpdate) error {
+func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(dep *appsv1.Deployment, gitUpdate gmosClient.RepoUpdate) (bool, error) {
 	dep.Spec.Template.ObjectMeta.Labels["git-hash"] = gitUpdate.CurrentCommit
 	// update a label on the deployment
 	config, err := readManifestForNamespace(gitUpdate, dep.Namespace)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// Todo error handling here
-	dep.Spec.Template.Spec.Containers[0].Image = config.Image
-	dep.Spec.Template.Spec.Containers[0].Command = config.Command
-	dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
-	return nil
+	container := dep.Spec.Template.Spec.Containers[0]
+
+	// check whether any fields in the deployment were updated
+	updated := container.Image != config.Image || container.VolumeMounts[0].MountPath != config.Volume.Dst
+	if len(container.Command) == len(config.Command) {
+		for i := range container.Command {
+			updated = updated || container.Command[i] != config.Command[i]
+		}
+	} else {
+		updated = true
+	}
+	if len(container.Env) == len(config.Env) {
+		for i := range container.Env {
+			updated = updated || container.Env[i].Name != config.Env[i].Name ||
+				container.Env[i].Value != config.Env[i].Value
+		}
+	} else {
+		updated = true
+	}
+
+	if updated {
+		dep.Spec.Template.Spec.Containers[0].Image = config.Image
+		dep.Spec.Template.Spec.Containers[0].Command = config.Command
+		dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
+
+		newEnv := make([]corev1.EnvVar, len(config.Env))
+		for i, val := range config.Env {
+			newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
+		}
+		dep.Spec.Template.Spec.Containers[0].Env = newEnv
+	}
+	return updated, nil
 }

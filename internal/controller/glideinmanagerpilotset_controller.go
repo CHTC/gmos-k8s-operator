@@ -193,24 +193,26 @@ func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx cont
 
 	dep := &appsv1.Deployment{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, dep); err == nil {
-		// update a label on the deployment
-		if err := r.updateDeploymentFromGitCommit(dep, gitUpdate); err != nil {
+		// update the deployment if any fields changed
+		updated, err := r.updateDeploymentFromGitCommit(dep, gitUpdate)
+		if err != nil {
 			log.Error(err, "Failed to modify Deployment schema for PilotSet based on git update")
 			return err
 		}
-		if err := r.Update(ctx, dep); err != nil {
-			log.Error(err, "Failed to update Deployment for PilotSet based on git update")
-			return err
+		if updated {
+			if err := r.Update(ctx, dep); err != nil {
+				log.Error(err, "Failed to update Deployment for PilotSet based on git update")
+				return err
+			}
+			log.Info("Successfully updated Deployment based on git update")
 		}
-		log.Info("Successfully updated Deployment based on git update")
-		return nil
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Deployment not found for git update, must have been deleted")
-		return nil
 	} else {
 		log.Error(err, "Unable to get deployment")
 		return err
 	}
+	return nil
 
 }
 
