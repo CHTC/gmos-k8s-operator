@@ -94,7 +94,6 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 	} else {
 		log.Info("No updates to repo")
 	}
-
 }
 
 func (p *GlideinManagerPoller) StopPolling() {

@@ -27,6 +27,8 @@ spec:
           mountPath: /mnt/ssh/
         - name: gm-file-server-config
           mountPath: /etc/gm-file-server/config
+        - name: gm-file-server-pilot-token
+          mountPath: /etc/gm-file-server/secrets
         - name: data-vol
           mountPath: /etc/gm-file-server/data
         resources:
@@ -40,6 +42,9 @@ spec:
       - name: gm-file-server-ssh-key
         secret:
           secretName: gm-file-server-ssh-key
+      - name: gm-file-server-pilot-token
+        secret:
+          secretName: gm-file-server-pilot-token
       - name: data-vol
         emptyDir:
           sizeLimit: 500Mi

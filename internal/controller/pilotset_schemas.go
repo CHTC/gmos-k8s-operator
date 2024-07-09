@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	gmosClient "github.com/chtc/gmos-client/client"
@@ -59,17 +60,29 @@ func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *g
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "gmos-data",
 							MountPath: "/mnt/gmos-data",
-						}},
+						}, {
+							Name:      "gmos-secrets",
+							MountPath: "/mnt/gmos-secrets",
+						},
+						},
 						Command: []string{"sleep", "120"},
 					}},
 					Volumes: []corev1.Volume{{
 						Name: "gmos-data",
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
-								SecretName: pilotSet.Name,
+								SecretName: pilotSet.Name + "-data",
 							},
 						},
-					}},
+					}, {
+						Name: "gmos-secrets",
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: pilotSet.Name + "-tokens",
+							},
+						},
+					},
+					},
 				},
 			},
 		},
@@ -92,10 +105,10 @@ func (r *GlideinManagerPilotSetReconciler) updateDeploymentForPilotSet(dep *apps
 	return updated, nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) makeSecretForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (*corev1.Secret, error) {
+func (r *GlideinManagerPilotSetReconciler) makeSecretForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, suffix string) (*corev1.Secret, error) {
 	cmap := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pilotSet.Name,
+			Name:      pilotSet.Name + suffix,
 			Namespace: pilotSet.Namespace,
 		},
 		Data: map[string][]byte{
@@ -135,7 +148,7 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateSecretFromGitCommit(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {
+func (r *GlideinManagerPilotSetReconciler) updateDataSecretSchema(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {
 	// update a label on the deployment
 	config, err := readManifestForNamespace(gitUpdate, sec.Namespace)
 	if err != nil {
@@ -162,7 +175,24 @@ func (r *GlideinManagerPilotSetReconciler) updateSecretFromGitCommit(sec *corev1
 	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(dep *appsv1.Deployment, gitUpdate gmosClient.RepoUpdate) (bool, error) {
+func (r *GlideinManagerPilotSetReconciler) updateTokenSecretSchema(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {
+	// update a label on the deployment
+	config, err := readManifestForNamespace(gitUpdate, sec.Namespace)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%+v\n", config)
+	if config.SecretSource.SecretName == "" || config.SecretSource.Dst == "" {
+		return nil
+	}
+
+	tokenMap := make(map[string][]byte)
+	tokenMap[config.SecretSource.SecretName] = []byte("Hello, world!")
+	sec.Data = tokenMap
+	return nil
+}
+
+func (r *GlideinManagerPilotSetReconciler) updateDeploymentSchema(dep *appsv1.Deployment, gitUpdate gmosClient.RepoUpdate) (bool, error) {
 	dep.Spec.Template.ObjectMeta.Labels["git-hash"] = gitUpdate.CurrentCommit
 	// update a label on the deployment
 	config, err := readManifestForNamespace(gitUpdate, dep.Namespace)
@@ -173,7 +203,8 @@ func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(dep *ap
 	container := dep.Spec.Template.Spec.Containers[0]
 
 	// check whether any fields in the deployment were updated
-	updated := container.Image != config.Image || container.VolumeMounts[0].MountPath != config.Volume.Dst
+	updated := container.Image != config.Image || container.VolumeMounts[0].MountPath != config.Volume.Dst ||
+		container.VolumeMounts[1].MountPath != config.SecretSource.Dst
 	if len(container.Command) == len(config.Command) {
 		for i := range container.Command {
 			updated = updated || container.Command[i] != config.Command[i]
@@ -191,9 +222,24 @@ func (r *GlideinManagerPilotSetReconciler) updateDeploymentFromGitCommit(dep *ap
 	}
 
 	if updated {
+		// Launch parameters
 		dep.Spec.Template.Spec.Containers[0].Image = config.Image
 		dep.Spec.Template.Spec.Containers[0].Command = config.Command
-		dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
+
+		// Data mount parameters
+		if config.Volume.Src != "" && config.Volume.Dst != "" {
+			dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
+		}
+
+		if config.SecretSource.SecretName != "" && config.SecretSource.Dst != "" {
+			tokenDir, tokenName := path.Split(config.SecretSource.Dst)
+			dep.Spec.Template.Spec.Containers[0].VolumeMounts[1].MountPath = tokenDir
+
+			dep.Spec.Template.Spec.Volumes[1].VolumeSource.Secret.Items = []corev1.KeyToPath{{
+				Key:  config.SecretSource.SecretName,
+				Path: tokenName,
+			}}
+		}
 
 		newEnv := make([]corev1.EnvVar, len(config.Env))
 		for i, val := range config.Env {

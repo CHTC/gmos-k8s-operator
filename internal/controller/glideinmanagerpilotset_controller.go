@@ -137,15 +137,20 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		log.Info("Updated Deployment for PilotSet")
 	} else if apierrors.IsNotFound(err) {
 		// Deployment doesn't exist, create it
-		newSec, err2 := r.makeSecretForPilotSet(pilotSet)
-		newDep, err1 := r.makeDeploymentForPilotSet(pilotSet)
-		if err := errors.Join(err1, err2); err != nil {
+		tokenSec, err1 := r.makeSecretForPilotSet(pilotSet, "-tokens")
+		dataSec, err2 := r.makeSecretForPilotSet(pilotSet, "-data")
+		newDep, err3 := r.makeDeploymentForPilotSet(pilotSet)
+		if err := errors.Join(err1, err2, err3); err != nil {
 			log.Error(err, "Unable to build schema for new resources for pilotSet")
 			return ctrl.Result{}, err
 		}
 		// Deployment depends on secret, create serially
-		if err := r.Create(ctx, newSec); err != nil {
-			log.Error(err, "Failed to add secret to PilotSet")
+		if err := r.Create(ctx, dataSec); err != nil {
+			log.Error(err, "Failed to add data secret to PilotSet")
+			return ctrl.Result{}, err
+		}
+		if err := r.Create(ctx, tokenSec); err != nil {
+			log.Error(err, "Failed to add access secret to PilotSet")
 			return ctrl.Result{}, err
 		}
 		if err := r.Create(ctx, newDep); err != nil {
@@ -169,13 +174,11 @@ func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alph
 	RemoveGlideinManagerWatcher(pilotSet)
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
+func (r *GlideinManagerPilotSetReconciler) updateDataSecret(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
 	log := log.FromContext(ctx)
-	log.Info("Got repo update!")
-
 	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, sec); err == nil {
-		if err := r.updateSecretFromGitCommit(sec, gitUpdate); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: name + "-data", Namespace: namespace}, sec); err == nil {
+		if err := r.updateDataSecretSchema(sec, gitUpdate); err != nil {
 			log.Error(err, "Failed to modify Secret schema for PilotSet based on git update")
 			return err
 		}
@@ -190,11 +193,36 @@ func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx cont
 		log.Error(err, "Unable to get Secret")
 		return err
 	}
+	return nil
+}
 
+func (r *GlideinManagerPilotSetReconciler) updateTokenSecret(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
+	log := log.FromContext(ctx)
+	sec := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name + "-tokens", Namespace: namespace}, sec); err == nil {
+		if err := r.updateTokenSecretSchema(sec, gitUpdate); err != nil {
+			log.Error(err, "Failed to modify Token Secret schema for PilotSet based on git update")
+			return err
+		}
+		if err := r.Update(ctx, sec); err != nil {
+			log.Error(err, "Failed to update Token Secret for PilotSet based on git update")
+			return err
+		}
+		log.Info("Successfully updated Token Secret based on git update")
+	} else if apierrors.IsNotFound(err) {
+		log.Info("Token Secret not found for git update, must have been deleted")
+	} else {
+		log.Error(err, "Unable to get Secret")
+		return err
+	}
+	return nil
+}
+func (r *GlideinManagerPilotSetReconciler) updateDeployment(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
+	log := log.FromContext(ctx)
 	dep := &appsv1.Deployment{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, dep); err == nil {
 		// update the deployment if any fields changed
-		updated, err := r.updateDeploymentFromGitCommit(dep, gitUpdate)
+		updated, err := r.updateDeploymentSchema(dep, gitUpdate)
 		if err != nil {
 			log.Error(err, "Failed to modify Deployment schema for PilotSet based on git update")
 			return err
@@ -212,6 +240,25 @@ func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx cont
 		log.Error(err, "Unable to get deployment")
 		return err
 	}
+	return nil
+}
+
+func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
+	log := log.FromContext(ctx)
+	log.Info("Got repo update!")
+
+	if err := r.updateDataSecret(ctx, name, namespace, gitUpdate); err != nil {
+		return err
+	}
+
+	if err := r.updateTokenSecret(ctx, name, namespace, gitUpdate); err != nil {
+		return err
+	}
+
+	if err := r.updateDeployment(ctx, name, namespace, gitUpdate); err != nil {
+		return err
+	}
+
 	return nil
 
 }
