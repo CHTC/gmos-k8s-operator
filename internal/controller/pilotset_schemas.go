@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
@@ -181,13 +182,38 @@ func (r *GlideinManagerPilotSetReconciler) updateTokenSecretSchema(sec *corev1.S
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%+v\n", config)
 	if config.SecretSource.SecretName == "" || config.SecretSource.Dst == "" {
 		return nil
 	}
 
 	tokenMap := make(map[string][]byte)
-	tokenMap[config.SecretSource.SecretName] = []byte("Hello, world!")
+	// TODO assumes a single key in the token secret
+	if len(sec.Data) != 1 {
+		return fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
+	}
+	for _, val := range sec.Data {
+		tokenMap[config.SecretSource.SecretName] = val
+		break
+	}
+	sec.Data = tokenMap
+	return nil
+}
+
+func (r *GlideinManagerPilotSetReconciler) updateTokenSecretValue(sec *corev1.Secret, secValue gmosClient.SecretValue) error {
+	// update a label on the deployment
+	tokenMap := make(map[string][]byte)
+	// TODO assumes a single key in the token secret
+	if len(sec.Data) != 1 {
+		return fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
+	}
+	val, err := base64.StdEncoding.DecodeString(secValue.Value)
+	if err != nil {
+		return err
+	}
+	for key := range sec.Data {
+		tokenMap[key] = val
+		break
+	}
 	sec.Data = tokenMap
 	return nil
 }
