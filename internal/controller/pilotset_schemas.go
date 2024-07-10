@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (*appsv1.Deployment, error) {
@@ -95,17 +96,6 @@ func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *g
 	return dep, nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateDeploymentForPilotSet(dep *appsv1.Deployment, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (bool, error) {
-	// TODO
-	updated := false
-	if *dep.Spec.Replicas != pilotSet.Spec.Size {
-		dep.Spec.Replicas = &pilotSet.Spec.Size
-		updated = true
-	}
-
-	return updated, nil
-}
-
 func (r *GlideinManagerPilotSetReconciler) makeSecretForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, suffix string) (*corev1.Secret, error) {
 	cmap := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -147,6 +137,24 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 		}
 	}
 	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
+}
+
+type ResourceUpdater[T client.Object] interface {
+	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
+}
+
+type DeploymentPilotSetUpdater struct {
+	pilotSet *gmosv1alpha1.GlideinManagerPilotSet
+}
+
+func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
+	// TODO
+	updated := false
+	if *dep.Spec.Replicas != du.pilotSet.Spec.Size {
+		dep.Spec.Replicas = &du.pilotSet.Spec.Size
+		updated = true
+	}
+	return updated, nil
 }
 
 type DataSecretGitUpdater struct {

@@ -118,51 +118,48 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
 
 	dep := &appsv1.Deployment{}
-	if err := r.Get(ctx, types.NamespacedName{Name: pilotSet.Name, Namespace: pilotSet.Namespace}, dep); err == nil {
-		// Deployment found successfully, update it
-		updatedDep, err := r.updateDeploymentForPilotSet(dep, pilotSet)
-		if err != nil {
-			log.Error(err, "Unable to update Deployment for PilotSet")
-			return ctrl.Result{}, err
-		}
-		if updatedDep {
-			if err := r.Update(ctx, dep); err != nil {
-				log.Error(err, "Failed to update Deployment for PilotSet")
-				return ctrl.Result{}, err
-			}
-		}
+	err := ApplyUpdateToResource(r, ctx, pilotSet.Name, pilotSet.Namespace, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet})
+	if err == nil {
+		// Deployment found and updated successfully, add callbacks
 		r.addPilotSetCallbacks(ctx, pilotSet)
-		log.Info("Updated Deployment for PilotSet")
 	} else if apierrors.IsNotFound(err) {
-		// Deployment doesn't exist, create it
-		tokenSec, err1 := r.makeSecretForPilotSet(pilotSet, "-tokens")
-		dataSec, err2 := r.makeSecretForPilotSet(pilotSet, "-data")
-		newDep, err3 := r.makeDeploymentForPilotSet(pilotSet)
-		if err := errors.Join(err1, err2, err3); err != nil {
-			log.Error(err, "Unable to build schema for new resources for pilotSet")
+		// Resources don't exist yet, create them
+		if err := r.createResourcesForPilotSet(ctx, pilotSet); err != nil {
 			return ctrl.Result{}, err
 		}
-		// Deployment depends on secret, create serially
-		if err := r.Create(ctx, dataSec); err != nil {
-			log.Error(err, "Failed to add data secret to PilotSet")
-			return ctrl.Result{}, err
-		}
-		if err := r.Create(ctx, tokenSec); err != nil {
-			log.Error(err, "Failed to add access secret to PilotSet")
-			return ctrl.Result{}, err
-		}
-		if err := r.Create(ctx, newDep); err != nil {
-			log.Error(err, "Failed to add deployment to PilotSet")
-			return ctrl.Result{}, err
-		}
-		r.addPilotSetCallbacks(ctx, pilotSet)
-		log.Info("Created new resources for PilotSet")
 	} else {
 		log.Error(err, "Unable to check status of Deployment for PilotSet")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *GlideinManagerPilotSetReconciler) createResourcesForPilotSet(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+	log := log.FromContext(ctx)
+	// Deployment doesn't exist, create it
+	tokenSec, err1 := r.makeSecretForPilotSet(pilotSet, "-tokens")
+	dataSec, err2 := r.makeSecretForPilotSet(pilotSet, "-data")
+	newDep, err3 := r.makeDeploymentForPilotSet(pilotSet)
+	if err := errors.Join(err1, err2, err3); err != nil {
+		log.Error(err, "Unable to build schema for new resources for pilotSet")
+		return err
+	}
+	// Deployment depends on secret, create serially
+	if err := r.Create(ctx, dataSec); err != nil {
+		log.Error(err, "Failed to add data secret to PilotSet")
+		return err
+	}
+	if err := r.Create(ctx, tokenSec); err != nil {
+		log.Error(err, "Failed to add access secret to PilotSet")
+		return err
+	}
+	if err := r.Create(ctx, newDep); err != nil {
+		log.Error(err, "Failed to add deployment to PilotSet")
+		return err
+	}
+	log.Info("Created new resources for PilotSet")
+	return nil
 }
 
 func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
@@ -181,10 +178,6 @@ func (r *GlideinManagerPilotSetReconciler) addPilotSetCallbacks(ctx context.Cont
 			sec := &corev1.Secret{}
 			return ApplyUpdateToResource(r, ctx, pilotSet.Name+"-tokens", pilotSet.Namespace, sec, &TokenSecretValueUpdater{secValue: &sv})
 		})
-}
-
-type ResourceUpdater[T client.Object] interface {
-	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
 }
 
 func ApplyUpdateToResource[T client.Object](
@@ -206,7 +199,7 @@ func ApplyUpdateToResource[T client.Object](
 		}
 		log.Info("Resource updated successfully")
 	} else if apierrors.IsNotFound(err) {
-		log.Info("Resource not found, must have been deleted")
+		log.Info("Resource not found, must have been deleted or not created")
 	} else {
 		log.Error(err, "Unable to get resource")
 		return err
