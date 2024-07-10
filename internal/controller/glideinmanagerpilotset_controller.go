@@ -185,19 +185,12 @@ func (r *GlideinManagerPilotSetReconciler) addPilotSetCallbacks(ctx context.Cont
 type ResourceUpdater[T client.Object] interface {
 	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
 }
-type DeploymentGitUpdater struct {
-	gitUpdate *gmosClient.RepoUpdate
-}
-
-func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
-	return r.updateDeploymentSchema(dep, *du.gitUpdate)
-}
 
 func applyUpdateToResource[T client.Object](
-	r *GlideinManagerPilotSetReconciler, ctx context.Context, name string, namespace string, resource T, updateFunc func() (bool, error)) error {
+	r *GlideinManagerPilotSetReconciler, ctx context.Context, name string, namespace string, resource T, updater ResourceUpdater[T]) error {
 	log := log.FromContext(ctx)
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, resource); err == nil {
-		updated, err := updateFunc()
+		updated, err := updater.UpdateResourceValue(r, resource)
 		if err != nil {
 			log.Error(err, "Unable to apply update to resource value")
 			return err
@@ -213,50 +206,6 @@ func applyUpdateToResource[T client.Object](
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, must have been deleted")
 	} else {
-		return err
-	}
-	return nil
-}
-
-func (r *GlideinManagerPilotSetReconciler) updateDataSecret(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(ctx)
-	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name + "-data", Namespace: namespace}, sec); err == nil {
-		if err := r.updateDataSecretSchema(sec, gitUpdate); err != nil {
-			log.Error(err, "Failed to modify Secret schema for PilotSet based on git update")
-			return err
-		}
-		if err := r.Update(ctx, sec); err != nil {
-			log.Error(err, "Failed to update Secret for PilotSet based on git update")
-			return err
-		}
-		log.Info("Successfully updated Secret based on git update")
-	} else if apierrors.IsNotFound(err) {
-		log.Info("Secret not found for git update, must have been deleted")
-	} else {
-		log.Error(err, "Unable to get Secret")
-		return err
-	}
-	return nil
-}
-
-func (r *GlideinManagerPilotSetReconciler) updateTokenSecretFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(ctx)
-	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name + "-tokens", Namespace: namespace}, sec); err == nil {
-		if err := r.updateTokenSecretSchema(sec, gitUpdate); err != nil {
-			log.Error(err, "Failed to modify Token Secret schema for PilotSet based on git update")
-			return err
-		}
-		if err := r.Update(ctx, sec); err != nil {
-			log.Error(err, "Failed to update Token Secret for PilotSet based on git update")
-			return err
-		}
-		log.Info("Successfully updated Token Secret based on git update")
-	} else if apierrors.IsNotFound(err) {
-		log.Info("Token Secret not found for git update, must have been deleted")
-	} else {
-		log.Error(err, "Unable to get Secret")
 		return err
 	}
 	return nil
@@ -284,52 +233,25 @@ func (r *GlideinManagerPilotSetReconciler) updateTokenSecretFromSecretValue(ctx 
 	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateDeployment(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(ctx)
-	dep := &appsv1.Deployment{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, dep); err == nil {
-		// update the deployment if any fields changed
-		updated, err := r.updateDeploymentSchema(dep, gitUpdate)
-		if err != nil {
-			log.Error(err, "Failed to modify Deployment schema for PilotSet based on git update")
-			return err
-		}
-		if updated {
-			if err := r.Update(ctx, dep); err != nil {
-				log.Error(err, "Failed to update Deployment for PilotSet based on git update")
-				return err
-			}
-			log.Info("Successfully updated Deployment based on git update")
-		}
-	} else if apierrors.IsNotFound(err) {
-		log.Info("Deployment not found for git update, must have been deleted")
-	} else {
-		log.Error(err, "Unable to get deployment")
-		return err
-	}
-	return nil
-}
-
 func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
 	log := log.FromContext(ctx)
 	log.Info("Got repo update!")
 
 	log.Info("Updating data Secret")
-	if err := r.updateDataSecret(ctx, name, namespace, gitUpdate); err != nil {
+	sec := &corev1.Secret{}
+	if err := applyUpdateToResource(r, ctx, name+"-data", namespace, sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
 		return err
 	}
 
 	log.Info("Updating access token Secret")
-	if err := r.updateTokenSecretFromGitCommit(ctx, name, namespace, gitUpdate); err != nil {
+	sec2 := &corev1.Secret{}
+	if err := applyUpdateToResource(r, ctx, name+"-tokens", namespace, sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
 		return err
 	}
 
 	log.Info("Updating Deployment")
 	dep := &appsv1.Deployment{}
-	if err := applyUpdateToResource(
-		r, ctx, name, namespace, dep,
-		func() (bool, error) { return r.updateDeploymentSchema(dep, gitUpdate) },
-	); err != nil {
+	if err := applyUpdateToResource(r, ctx, name, namespace, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); err != nil {
 		return err
 	}
 

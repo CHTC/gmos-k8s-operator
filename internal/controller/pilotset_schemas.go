@@ -149,16 +149,20 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateDataSecretSchema(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {
+type DataSecretGitUpdater struct {
+	gitUpdate *gmosClient.RepoUpdate
+}
+
+func (du *DataSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
-	config, err := readManifestForNamespace(gitUpdate, sec.Namespace)
+	config, err := readManifestForNamespace(*du.gitUpdate, sec.Namespace)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	listing, err := os.ReadDir(filepath.Join(gitUpdate.Path, config.Volume.Src))
+	listing, err := os.ReadDir(filepath.Join(du.gitUpdate.Path, config.Volume.Src))
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	fileMap := make(map[string][]byte)
@@ -166,37 +170,41 @@ func (r *GlideinManagerPilotSetReconciler) updateDataSecretSchema(sec *corev1.Se
 		if entry.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(gitUpdate.Path, config.Volume.Src, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(du.gitUpdate.Path, config.Volume.Src, entry.Name()))
 		if err != nil {
-			return err
+			return false, err
 		}
 		fileMap[entry.Name()] = data
 	}
 	sec.Data = fileMap
-	return nil
+	return true, nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateTokenSecretSchema(sec *corev1.Secret, gitUpdate gmosClient.RepoUpdate) error {
+type TokenSecretGitUpdater struct {
+	gitUpdate *gmosClient.RepoUpdate
+}
+
+func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
-	config, err := readManifestForNamespace(gitUpdate, sec.Namespace)
+	config, err := readManifestForNamespace(*du.gitUpdate, sec.Namespace)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if config.SecretSource.SecretName == "" || config.SecretSource.Dst == "" {
-		return nil
+		return false, nil
 	}
 
 	tokenMap := make(map[string][]byte)
 	// TODO assumes a single key in the token secret
 	if len(sec.Data) != 1 {
-		return fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
+		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
 	}
 	for _, val := range sec.Data {
 		tokenMap[config.SecretSource.SecretName] = val
 		break
 	}
 	sec.Data = tokenMap
-	return nil
+	return true, nil
 }
 
 func (r *GlideinManagerPilotSetReconciler) updateTokenSecretValue(sec *corev1.Secret, secValue gmosClient.SecretValue) error {
@@ -218,10 +226,14 @@ func (r *GlideinManagerPilotSetReconciler) updateTokenSecretValue(sec *corev1.Se
 	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateDeploymentSchema(dep *appsv1.Deployment, gitUpdate gmosClient.RepoUpdate) (bool, error) {
-	dep.Spec.Template.ObjectMeta.Labels["git-hash"] = gitUpdate.CurrentCommit
+type DeploymentGitUpdater struct {
+	gitUpdate *gmosClient.RepoUpdate
+}
+
+func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
+	dep.Spec.Template.ObjectMeta.Labels["git-hash"] = du.gitUpdate.CurrentCommit
 	// update a label on the deployment
-	config, err := readManifestForNamespace(gitUpdate, dep.Namespace)
+	config, err := readManifestForNamespace(*du.gitUpdate, dep.Namespace)
 	if err != nil {
 		return false, err
 	}
