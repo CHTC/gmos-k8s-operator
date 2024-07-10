@@ -204,9 +204,11 @@ func ApplyUpdateToResource[T client.Object](
 			log.Error(err, "Unable to post update to resource")
 			return err
 		}
+		log.Info("Resource updated successfully")
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, must have been deleted")
 	} else {
+		log.Error(err, "Unable to get resource")
 		return err
 	}
 	return nil

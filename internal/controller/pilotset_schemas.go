@@ -204,6 +204,7 @@ func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRe
 		break
 	}
 	sec.Data = tokenMap
+	SetSecretSourceForNamespace(sec.Namespace, config.SecretSource.SecretName)
 	return true, nil
 }
 

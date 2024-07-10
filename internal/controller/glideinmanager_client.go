@@ -29,7 +29,7 @@ type NamespaceUpdateHandler struct {
 }
 
 type GlideinManagerPoller struct {
-	updateHandlers   map[string]NamespaceUpdateHandler
+	updateHandlers   map[string]*NamespaceUpdateHandler
 	client           *gmosClient.GlideinManagerClient
 	dataUpdateTicker *time.Ticker
 	refreshTicker    *time.Ticker
@@ -44,7 +44,7 @@ func NewGlidenManagerPoller(clientName string, managerUrl string) *GlideinManage
 	}
 
 	poller := &GlideinManagerPoller{
-		updateHandlers: make(map[string]NamespaceUpdateHandler),
+		updateHandlers: make(map[string]*NamespaceUpdateHandler),
 		client:         client,
 		doneChan:       make(chan bool),
 	}
@@ -90,18 +90,16 @@ func (p *GlideinManagerPoller) HasUpdateHandlerForNamespace(namespace string) bo
 
 func (p *GlideinManagerPoller) AddGitCallback(namespace string, callback UpdateCallback) {
 	if !p.HasUpdateHandlerForNamespace(namespace) {
-		p.updateHandlers[namespace] = NamespaceUpdateHandler{}
+		p.updateHandlers[namespace] = &NamespaceUpdateHandler{}
 	}
-	updateHandler := p.updateHandlers[namespace]
-	updateHandler.gitUpdateCallback = callback
+	p.updateHandlers[namespace].gitUpdateCallback = callback
 }
 
 func (p *GlideinManagerPoller) AddSecretCallback(namespace string, callback SecretUpdateCallback) {
 	if !p.HasUpdateHandlerForNamespace(namespace) {
-		p.updateHandlers[namespace] = NamespaceUpdateHandler{}
+		p.updateHandlers[namespace] = &NamespaceUpdateHandler{}
 	}
-	updateHandler := p.updateHandlers[namespace]
-	updateHandler.secretUpdateCallback = callback
+	p.updateHandlers[namespace].secretUpdateCallback = callback
 }
 
 func (p *GlideinManagerPoller) CheckForGitUpdates() {
@@ -116,7 +114,7 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 		if updater.currentCommit == repoUpdate.CurrentCommit {
 			continue
 		}
-		log.Info(fmt.Sprintf("Updating namespace %v to commit %v", namespace, repoUpdate.CurrentCommit))
+		log.Info(fmt.Sprintf("Updating namespace %v to commit %v with updater %+v", namespace, repoUpdate.CurrentCommit, updater))
 		if err := updater.gitUpdateCallback(repoUpdate); err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while handling repo update for namespace %v", namespace))
 		} else {
@@ -127,7 +125,7 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 
 func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Checking for git updates from %v", p.client.ManagerUrl))
+	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
 	for namespace, updater := range p.updateHandlers {
 		// Only check on namespaces with a secret name specified
 		if updater.secretName == "" {
