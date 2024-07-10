@@ -118,8 +118,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
 
 	dep := &appsv1.Deployment{}
-	err := ApplyUpdateToResource(r, ctx, pilotSet.Name, pilotSet.Namespace, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet})
-	if err == nil {
+	if err := ApplyUpdateToResource(r, ctx, pilotSet.Name, pilotSet.Namespace, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err == nil {
 		// Deployment found and updated successfully, add callbacks
 		r.addPilotSetCallbacks(ctx, pilotSet)
 	} else if apierrors.IsNotFound(err) {
@@ -200,11 +199,16 @@ func ApplyUpdateToResource[T client.Object](
 		log.Info("Resource updated successfully")
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, must have been deleted or not created")
+		return err
 	} else {
 		log.Error(err, "Unable to get resource")
 		return err
 	}
 	return nil
+}
+
+func updateErrOk(err error) bool {
+	return err == nil || apierrors.IsNotFound(err)
 }
 
 func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
@@ -213,19 +217,19 @@ func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx cont
 
 	log.Info("Updating data Secret")
 	sec := &corev1.Secret{}
-	if err := ApplyUpdateToResource(r, ctx, name+"-data", namespace, sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
+	if err := ApplyUpdateToResource(r, ctx, name+"-data", namespace, sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating access token Secret")
 	sec2 := &corev1.Secret{}
-	if err := ApplyUpdateToResource(r, ctx, name+"-tokens", namespace, sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
+	if err := ApplyUpdateToResource(r, ctx, name+"-tokens", namespace, sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating Deployment")
 	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(r, ctx, name, namespace, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); err != nil {
+	if err := ApplyUpdateToResource(r, ctx, name, namespace, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
