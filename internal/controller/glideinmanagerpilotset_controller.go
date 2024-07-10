@@ -178,7 +178,8 @@ func (r *GlideinManagerPilotSetReconciler) addPilotSetCallbacks(ctx context.Cont
 		},
 		func(sv gmosClient.SecretValue) error {
 			log.Info("Secret updated to version " + sv.Version)
-			return r.updateTokenSecretFromSecretValue(ctx, pilotSet.Name, pilotSet.Namespace, sv)
+			sec := &corev1.Secret{}
+			return ApplyUpdateToResource(r, ctx, pilotSet.Name+"-tokens", pilotSet.Namespace, sec, &TokenSecretValueUpdater{secValue: &sv})
 		})
 }
 
@@ -186,7 +187,7 @@ type ResourceUpdater[T client.Object] interface {
 	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
 }
 
-func applyUpdateToResource[T client.Object](
+func ApplyUpdateToResource[T client.Object](
 	r *GlideinManagerPilotSetReconciler, ctx context.Context, name string, namespace string, resource T, updater ResourceUpdater[T]) error {
 	log := log.FromContext(ctx)
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, resource); err == nil {
@@ -211,47 +212,25 @@ func applyUpdateToResource[T client.Object](
 	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateTokenSecretFromSecretValue(ctx context.Context, name string, namespace string, secretValue gmosClient.SecretValue) error {
-	log := log.FromContext(ctx)
-	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name + "-tokens", Namespace: namespace}, sec); err == nil {
-		if err := r.updateTokenSecretValue(sec, secretValue); err != nil {
-			log.Error(err, "Failed to modify Token Secret schema for PilotSet based on git update")
-			return err
-		}
-		if err := r.Update(ctx, sec); err != nil {
-			log.Error(err, "Failed to update Token Secret for PilotSet based on git update")
-			return err
-		}
-		log.Info("Successfully updated Token Secret based on git update")
-	} else if apierrors.IsNotFound(err) {
-		log.Info("Token Secret not found for git update, must have been deleted")
-	} else {
-		log.Error(err, "Unable to get Secret")
-		return err
-	}
-	return nil
-}
-
 func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
 	log := log.FromContext(ctx)
 	log.Info("Got repo update!")
 
 	log.Info("Updating data Secret")
 	sec := &corev1.Secret{}
-	if err := applyUpdateToResource(r, ctx, name+"-data", namespace, sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
+	if err := ApplyUpdateToResource(r, ctx, name+"-data", namespace, sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
 		return err
 	}
 
 	log.Info("Updating access token Secret")
 	sec2 := &corev1.Secret{}
-	if err := applyUpdateToResource(r, ctx, name+"-tokens", namespace, sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
+	if err := ApplyUpdateToResource(r, ctx, name+"-tokens", namespace, sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); err != nil {
 		return err
 	}
 
 	log.Info("Updating Deployment")
 	dep := &appsv1.Deployment{}
-	if err := applyUpdateToResource(r, ctx, name, namespace, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); err != nil {
+	if err := ApplyUpdateToResource(r, ctx, name, namespace, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); err != nil {
 		return err
 	}
 

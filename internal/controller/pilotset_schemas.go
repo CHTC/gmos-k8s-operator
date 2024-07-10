@@ -207,23 +207,27 @@ func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRe
 	return true, nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) updateTokenSecretValue(sec *corev1.Secret, secValue gmosClient.SecretValue) error {
+type TokenSecretValueUpdater struct {
+	secValue *gmosClient.SecretValue
+}
+
+func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
 	tokenMap := make(map[string][]byte)
 	// TODO assumes a single key in the token secret
 	if len(sec.Data) != 1 {
-		return fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
+		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
 	}
-	val, err := base64.StdEncoding.DecodeString(secValue.Value)
+	val, err := base64.StdEncoding.DecodeString(du.secValue.Value)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for key := range sec.Data {
 		tokenMap[key] = val
 		break
 	}
 	sec.Data = tokenMap
-	return nil
+	return true, nil
 }
 
 type DeploymentGitUpdater struct {
