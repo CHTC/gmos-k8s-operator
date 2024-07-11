@@ -119,11 +119,12 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(r, ctx, pilotSet.Name, pilotSet.Namespace, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
+	if err := ApplyUpdateToResource(&PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet},
+		pilotSet.Name, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for PilotSet")
 		return ctrl.Result{}, err
 	}
-	r.addPilotSetCallbacks(ctx, pilotSet)
+	AddGlideinManagerWatcher(pilotSet, &PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet})
 	return ctrl.Result{}, nil
 }
 
@@ -144,63 +145,53 @@ func (pu *PilotSetUpdater) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error
 
 	log.Info("Updating data Secret")
 	sec := &corev1.Secret{}
-	if err := ApplyUpdateToResource(
-		pu.reconciler, pu.ctx, pu.pilotSet.Name+"-data", pu.pilotSet.Namespace, sec,
-		&DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	baseName := pu.pilotSet.Name
+	if err := ApplyUpdateToResource(pu, baseName+"-data", sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating access token Secret")
 	sec2 := &corev1.Secret{}
-	if err := ApplyUpdateToResource(
-		pu.reconciler, pu.ctx, pu.pilotSet.Name+"-tokens", pu.pilotSet.Namespace, sec2,
-		&TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pu, baseName+"-tokens", sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating Deployment")
 	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(
-		pu.reconciler, pu.ctx, pu.pilotSet.Name, pu.pilotSet.Namespace, dep,
-		&DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pu, baseName, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	return nil
-
 }
 
 func (pu *PilotSetUpdater) ApplySecretUpdate(sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
 	sec := &corev1.Secret{}
-	return ApplyUpdateToResource(
-		pu.reconciler, pu.ctx, pu.pilotSet.Name+"-tokens", pu.pilotSet.Namespace, sec, &TokenSecretValueUpdater{secValue: &sv})
+	return ApplyUpdateToResource(pu, pu.pilotSet.Name+"-tokens", sec, &TokenSecretValueUpdater{secValue: &sv})
 }
 
-func (r *GlideinManagerPilotSetReconciler) addPilotSetCallbacks(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
-	AddGlideinManagerWatcher(pilotSet, &PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet})
-}
-
-func CreateResourceIfNotExists[T client.Object](
-	r *GlideinManagerPilotSetReconciler, ctx context.Context, name string, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, resource T, creator ResourceCreator[T]) error {
-	log := log.FromContext(ctx)
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: pilotSet.Namespace}, resource); err == nil {
+func CreateResourceIfNotExists[T client.Object](pilotSetUpdater *PilotSetUpdater, name string, resource T, creator ResourceCreator[T]) error {
+	log := log.FromContext(pilotSetUpdater.ctx)
+	if err := pilotSetUpdater.reconciler.Get(
+		pilotSetUpdater.ctx, types.NamespacedName{Name: name, Namespace: pilotSetUpdater.pilotSet.Namespace}, resource); err == nil {
 		log.Info("Resource already exists, no action needed.")
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, creating it.")
 		resource.SetName(name)
-		resource.SetNamespace(pilotSet.Namespace)
-		if err := creator.SetResourceValue(r, pilotSet, resource); err != nil {
+		resource.SetNamespace(pilotSetUpdater.pilotSet.Namespace)
+		if err := creator.SetResourceValue(pilotSetUpdater.reconciler, pilotSetUpdater.pilotSet, resource); err != nil {
 			log.Error(err, "Unable to set value for new resource")
 		}
-		if err := ctrl.SetControllerReference(pilotSet, resource, r.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(pilotSetUpdater.pilotSet, resource, pilotSetUpdater.reconciler.Scheme); err != nil {
 			return err
 		}
-		if err := r.Create(ctx, resource); err != nil {
+		if err := pilotSetUpdater.reconciler.Create(pilotSetUpdater.ctx, resource); err != nil {
 			log.Error(err, "Unable to create resource")
 			return err
 		}
+		MarkNamespaceOutOfSync(pilotSetUpdater.pilotSet.Namespace)
 		return nil
 	} else {
 		log.Error(err, "Unable to get resource")
@@ -209,11 +200,14 @@ func CreateResourceIfNotExists[T client.Object](
 	return nil
 }
 
-func ApplyUpdateToResource[T client.Object](
-	r *GlideinManagerPilotSetReconciler, ctx context.Context, name string, namespace string, resource T, updater ResourceUpdater[T]) error {
-	log := log.FromContext(ctx)
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, resource); err == nil {
-		updated, err := updater.UpdateResourceValue(r, resource)
+// Update an existing Kubernetes object:
+// 1. Fetch the object by name
+// 2. Apply an
+func ApplyUpdateToResource[T client.Object](pilotSetUpdater *PilotSetUpdater, name string, resource T, resourceUpdater ResourceUpdater[T]) error {
+	log := log.FromContext(pilotSetUpdater.ctx)
+	if err := pilotSetUpdater.reconciler.Get(
+		pilotSetUpdater.ctx, types.NamespacedName{Name: name, Namespace: pilotSetUpdater.pilotSet.Namespace}, resource); err == nil {
+		updated, err := resourceUpdater.UpdateResourceValue(pilotSetUpdater.reconciler, resource)
 		if err != nil {
 			log.Error(err, "Unable to apply update to resource value")
 			return err
@@ -222,7 +216,7 @@ func ApplyUpdateToResource[T client.Object](
 			log.Info("No updates needed for resource")
 			return nil
 		}
-		if err := r.Update(ctx, resource); err != nil {
+		if err := pilotSetUpdater.reconciler.Update(pilotSetUpdater.ctx, resource); err != nil {
 			log.Error(err, "Unable to post update to resource")
 			return err
 		}
@@ -243,19 +237,20 @@ func (r *GlideinManagerPilotSetReconciler) createResourcesForPilotSet(ctx contex
 
 	log.Info("Creating Data Secret if not exists")
 	sec := &corev1.Secret{}
-	if err := CreateResourceIfNotExists(r, ctx, pilotSet.Name+"-data", pilotSet, sec, &SecretPilotSetCreator{}); err != nil {
+	pilotSetUpdater := &PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-data", sec, &SecretPilotSetCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Access Token Secret if not exists")
 	sec2 := &corev1.Secret{}
-	if err := CreateResourceIfNotExists(r, ctx, pilotSet.Name+"-tokens", pilotSet, sec2, &SecretPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-tokens", sec2, &SecretPilotSetCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Deployment if not exists")
 	dep := &appsv1.Deployment{}
-	if err := CreateResourceIfNotExists(r, ctx, pilotSet.Name, pilotSet, dep, &DeploymentPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name, dep, &DeploymentPilotSetCreator{}); err != nil {
 		return err
 	}
 

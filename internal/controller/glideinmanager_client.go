@@ -216,6 +216,19 @@ func SetSecretSourceForNamespace(namespace string, secretName string) {
 	}
 }
 
+func MarkNamespaceOutOfSync(namespace string) {
+	log := log.FromContext(context.TODO())
+	log.Info(fmt.Sprintf("Marking namespace %v as out-of-sync", namespace))
+
+	for _, poller := range activeGlideinManagerPollers {
+		if poller.HasUpdateHandlerForNamespace(namespace) {
+			poller.syncStates[namespace].currentCommit = ""
+			poller.syncStates[namespace].currentSecretVersion = ""
+			break
+		}
+	}
+}
+
 func RemoveGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Removing glidein manager watcher from namespace %v", pilotSet.Namespace))
