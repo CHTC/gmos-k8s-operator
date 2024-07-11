@@ -48,6 +48,8 @@ func (du *DeploymentPilotSetCreator) SetResourceValue(
 				SecurityContext: &corev1.PodSecurityContext{
 					// Set a default non-root user
 					RunAsNonRoot: &[]bool{true}[0],
+					RunAsUser:    &[]int64{10000}[0],
+					RunAsGroup:   &[]int64{10000}[0],
 				},
 				Containers: []corev1.Container{{
 					Image:           "ubuntu:22.04",
