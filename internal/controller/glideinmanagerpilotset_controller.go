@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -116,53 +115,20 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
-
-	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(r, ctx, pilotSet.Name, pilotSet.Namespace, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err == nil {
-		// Deployment found and updated successfully, add callbacks
-		r.addPilotSetCallbacks(ctx, pilotSet)
-	} else if apierrors.IsNotFound(err) {
-		// Resources don't exist yet, create them
-		if err := r.createResourcesForPilotSet(ctx, pilotSet); err != nil {
-			return ctrl.Result{}, err
-		}
-	} else {
-		log.Error(err, "Unable to check status of Deployment for PilotSet")
+	if err := r.createResourcesForPilotSet(ctx, pilotSet); err != nil {
 		return ctrl.Result{}, err
 	}
-
+	dep := &appsv1.Deployment{}
+	if err := ApplyUpdateToResource(r, ctx, pilotSet.Name, pilotSet.Namespace, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
+		log.Error(err, "Unable to update Deployment for PilotSet")
+		return ctrl.Result{}, err
+	}
+	r.addPilotSetCallbacks(ctx, pilotSet)
 	return ctrl.Result{}, nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) createResourcesForPilotSet(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
-	log := log.FromContext(ctx)
-	// Deployment doesn't exist, create it
-	tokenSec, err1 := r.makeSecretForPilotSet(pilotSet, "-tokens")
-	dataSec, err2 := r.makeSecretForPilotSet(pilotSet, "-data")
-	newDep, err3 := r.makeDeploymentForPilotSet(pilotSet)
-	if err := errors.Join(err1, err2, err3); err != nil {
-		log.Error(err, "Unable to build schema for new resources for pilotSet")
-		return err
-	}
-	// Deployment depends on secret, create serially
-	if err := r.Create(ctx, dataSec); err != nil {
-		log.Error(err, "Failed to add data secret to PilotSet")
-		return err
-	}
-	if err := r.Create(ctx, tokenSec); err != nil {
-		log.Error(err, "Failed to add access secret to PilotSet")
-		return err
-	}
-	if err := r.Create(ctx, newDep); err != nil {
-		log.Error(err, "Failed to add deployment to PilotSet")
-		return err
-	}
-	log.Info("Created new resources for PilotSet")
-	return nil
-}
-
+// Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
 func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
-	// TODO
 	RemoveGlideinManagerWatcher(pilotSet)
 }
 
@@ -177,6 +143,33 @@ func (r *GlideinManagerPilotSetReconciler) addPilotSetCallbacks(ctx context.Cont
 			sec := &corev1.Secret{}
 			return ApplyUpdateToResource(r, ctx, pilotSet.Name+"-tokens", pilotSet.Namespace, sec, &TokenSecretValueUpdater{secValue: &sv})
 		})
+}
+
+func CreateResourceIfNotExists[T client.Object](
+	r *GlideinManagerPilotSetReconciler, ctx context.Context, name string, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, resource T, creator ResourceCreator[T]) error {
+	log := log.FromContext(ctx)
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: pilotSet.Namespace}, resource); err == nil {
+		log.Info("Resource already exists, no action needed.")
+	} else if apierrors.IsNotFound(err) {
+		log.Info("Resource not found, creating it.")
+		resource.SetName(name)
+		resource.SetNamespace(pilotSet.Namespace)
+		if err := creator.SetResourceValue(r, pilotSet, resource); err != nil {
+			log.Error(err, "Unable to set value for new resource")
+		}
+		if err := ctrl.SetControllerReference(pilotSet, resource, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.Create(ctx, resource); err != nil {
+			log.Error(err, "Unable to create resource")
+			return err
+		}
+		return nil
+	} else {
+		log.Error(err, "Unable to get resource")
+		return err
+	}
+	return nil
 }
 
 func ApplyUpdateToResource[T client.Object](
@@ -205,6 +198,32 @@ func ApplyUpdateToResource[T client.Object](
 		return err
 	}
 	return nil
+}
+
+func (r *GlideinManagerPilotSetReconciler) createResourcesForPilotSet(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+	log := log.FromContext(ctx)
+	log.Info("Got new value for PilotSet custom resource!")
+
+	log.Info("Creating Data Secret if not exists")
+	sec := &corev1.Secret{}
+	if err := CreateResourceIfNotExists(r, ctx, pilotSet.Name+"-data", pilotSet, sec, &SecretPilotSetCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Access Token Secret if not exists")
+	sec2 := &corev1.Secret{}
+	if err := CreateResourceIfNotExists(r, ctx, pilotSet.Name+"-tokens", pilotSet, sec2, &SecretPilotSetCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Deployment if not exists")
+	dep := &appsv1.Deployment{}
+	if err := CreateResourceIfNotExists(r, ctx, pilotSet.Name, pilotSet, dep, &DeploymentPilotSetCreator{}); err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func updateErrOk(err error) bool {

@@ -173,6 +173,9 @@ func (p *GlideinManagerPoller) DoHandshakeWithRetry(retries int, delay time.Dura
 
 var activeGlideinManagerPollers = make(map[string]*GlideinManagerPoller)
 
+// Add a Glidein Manager Watcher for the givein Gldiein Manager to the given PilotSet's namespace
+//
+// Should be Idempotent
 func AddGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, gitUpdateCallback UpdateCallback, secretUpdateCallback SecretUpdateCallback) error {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Updating Glidein Manager Watcher for namespace %v", pilotSet.Namespace))

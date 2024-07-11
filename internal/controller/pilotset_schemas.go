@@ -17,88 +17,92 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) (*appsv1.Deployment, error) {
+// Generic interface for a struct that contains a method which updates the structure of a
+// Kubernetes Resource
+type ResourceUpdater[T client.Object] interface {
+	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
+}
+
+// Generic interface for a struct that creates a Kubernetes resource that
+// doesn't yet exist
+type ResourceCreator[T client.Object] interface {
+	SetResourceValue(*GlideinManagerPilotSetReconciler, *gmosv1alpha1.GlideinManagerPilotSet, T) error
+}
+
+type DeploymentPilotSetCreator struct {
+}
+
+func (du *DeploymentPilotSetCreator) SetResourceValue(
+	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(pilotSet.Name)
-	dep := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pilotSet.Name,
-			Namespace: pilotSet.Namespace,
+	dep.Spec = appsv1.DeploymentSpec{
+		Replicas: &[]int32{1}[0],
+		Selector: &metav1.LabelSelector{
+			MatchLabels: labelsMap,
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &[]int32{1}[0],
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labelsMap,
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: labelsMap,
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsMap,
+			Spec: corev1.PodSpec{
+				SecurityContext: &corev1.PodSecurityContext{
+					// Set a default non-root user
+					RunAsNonRoot: &[]bool{true}[0],
 				},
-				Spec: corev1.PodSpec{
-					SecurityContext: &corev1.PodSecurityContext{
-						// Set a default non-root user
-						RunAsNonRoot: &[]bool{true}[0],
+				Containers: []corev1.Container{{
+					Image:           "ubuntu:22.04",
+					Name:            "sleeper",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					// Ensure restrictive context for the container
+					// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
+					SecurityContext: &corev1.SecurityContext{
+						Privileged: &[]bool{true}[0],
 					},
-					Containers: []corev1.Container{{
-						Image:           "ubuntu:22.04",
-						Name:            "sleeper",
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						// Ensure restrictive context for the container
-						// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
-						SecurityContext: &corev1.SecurityContext{
-							Privileged: &[]bool{true}[0],
-						},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "gmos-data",
-							MountPath: "/mnt/gmos-data",
-						}, {
-							Name:      "gmos-secrets",
-							MountPath: "/mnt/gmos-secrets",
-						},
-						},
-						Command: []string{"sleep", "120"},
-					}},
-					Volumes: []corev1.Volume{{
-						Name: "gmos-data",
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName: pilotSet.Name + "-data",
-							},
-						},
+					VolumeMounts: []corev1.VolumeMount{{
+						Name:      "gmos-data",
+						MountPath: "/mnt/gmos-data",
 					}, {
-						Name: "gmos-secrets",
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName: pilotSet.Name + "-tokens",
-							},
+						Name:      "gmos-secrets",
+						MountPath: "/mnt/gmos-secrets",
+					},
+					},
+					Command: []string{"sleep", "120"},
+				}},
+				Volumes: []corev1.Volume{{
+					Name: "gmos-data",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: pilotSet.Name + "-data",
 						},
 					},
+				}, {
+					Name: "gmos-secrets",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: pilotSet.Name + "-tokens",
+						},
 					},
+				},
 				},
 			},
 		},
 	}
 
 	if err := ctrl.SetControllerReference(pilotSet, dep, r.Scheme); err != nil {
-		return nil, err
+		return err
 	}
-	return dep, nil
+	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) makeSecretForPilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, suffix string) (*corev1.Secret, error) {
-	cmap := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pilotSet.Name + suffix,
-			Namespace: pilotSet.Namespace,
-		},
-		Data: map[string][]byte{
-			"sample.cfg": {},
-		},
-	}
+type SecretPilotSetCreator struct {
+}
 
-	if err := ctrl.SetControllerReference(pilotSet, cmap, r.Scheme); err != nil {
-		return nil, err
+func (du *SecretPilotSetCreator) SetResourceValue(
+	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
+	secret.Data = map[string][]byte{
+		"sample.cfg": {},
 	}
-	return cmap, nil
+	return nil
 }
 
 func labelsForPilotSet(name string) map[string]string {
@@ -125,10 +129,6 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 		}
 	}
 	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
-}
-
-type ResourceUpdater[T client.Object] interface {
-	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
 }
 
 // ResourceUpdater implementation that updates a Deployment based on changes
