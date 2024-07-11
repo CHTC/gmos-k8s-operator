@@ -132,17 +132,54 @@ func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alph
 	RemoveGlideinManagerWatcher(pilotSet)
 }
 
+type PilotSetUpdater struct {
+	ctx        context.Context
+	pilotSet   *gmosv1alpha1.GlideinManagerPilotSet
+	reconciler *GlideinManagerPilotSetReconciler
+}
+
+func (pu *PilotSetUpdater) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
+	log := log.FromContext(pu.ctx)
+	log.Info("Got repo update!")
+
+	log.Info("Updating data Secret")
+	sec := &corev1.Secret{}
+	if err := ApplyUpdateToResource(
+		pu.reconciler, pu.ctx, pu.pilotSet.Name+"-data", pu.pilotSet.Namespace, sec,
+		&DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+		return err
+	}
+
+	log.Info("Updating access token Secret")
+	sec2 := &corev1.Secret{}
+	if err := ApplyUpdateToResource(
+		pu.reconciler, pu.ctx, pu.pilotSet.Name+"-tokens", pu.pilotSet.Namespace, sec2,
+		&TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+		return err
+	}
+
+	log.Info("Updating Deployment")
+	dep := &appsv1.Deployment{}
+	if err := ApplyUpdateToResource(
+		pu.reconciler, pu.ctx, pu.pilotSet.Name, pu.pilotSet.Namespace, dep,
+		&DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+		return err
+	}
+
+	return nil
+
+}
+
+func (pu *PilotSetUpdater) ApplySecretUpdate(sv gmosClient.SecretValue) error {
+	log := log.FromContext(pu.ctx)
+	log.Info("Secret updated to version " + sv.Version)
+	sec := &corev1.Secret{}
+	return ApplyUpdateToResource(
+		pu.reconciler, pu.ctx, pu.pilotSet.Name+"-tokens", pu.pilotSet.Namespace, sec, &TokenSecretValueUpdater{secValue: &sv})
+}
+
 func (r *GlideinManagerPilotSetReconciler) addPilotSetCallbacks(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
-	log := log.FromContext(ctx)
-	AddGlideinManagerWatcher(pilotSet,
-		func(ru gmosClient.RepoUpdate) error {
-			return r.updateResourcesFromGitCommit(ctx, pilotSet.Name, pilotSet.Namespace, ru)
-		},
-		func(sv gmosClient.SecretValue) error {
-			log.Info("Secret updated to version " + sv.Version)
-			sec := &corev1.Secret{}
-			return ApplyUpdateToResource(r, ctx, pilotSet.Name+"-tokens", pilotSet.Namespace, sec, &TokenSecretValueUpdater{secValue: &sv})
-		})
+	AddGlideinManagerWatcher(pilotSet, &PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet})
 }
 
 func CreateResourceIfNotExists[T client.Object](
@@ -228,32 +265,6 @@ func (r *GlideinManagerPilotSetReconciler) createResourcesForPilotSet(ctx contex
 
 func updateErrOk(err error) bool {
 	return err == nil || apierrors.IsNotFound(err)
-}
-
-func (r *GlideinManagerPilotSetReconciler) updateResourcesFromGitCommit(ctx context.Context, name string, namespace string, gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(ctx)
-	log.Info("Got repo update!")
-
-	log.Info("Updating data Secret")
-	sec := &corev1.Secret{}
-	if err := ApplyUpdateToResource(r, ctx, name+"-data", namespace, sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
-
-	log.Info("Updating access token Secret")
-	sec2 := &corev1.Secret{}
-	if err := ApplyUpdateToResource(r, ctx, name+"-tokens", namespace, sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
-
-	log.Info("Updating Deployment")
-	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(r, ctx, name, namespace, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
-
-	return nil
-
 }
 
 // SetupWithManager sets up the controller with the Manager.
