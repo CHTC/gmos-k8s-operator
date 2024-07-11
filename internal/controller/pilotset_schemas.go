@@ -35,13 +35,8 @@ func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *g
 				},
 				Spec: corev1.PodSpec{
 					SecurityContext: &corev1.PodSecurityContext{
+						// Set a default non-root user
 						RunAsNonRoot: &[]bool{true}[0],
-						// IMPORTANT: seccomProfile was introduced with Kubernetes 1.19
-						// If you are looking for to produce solutions to be supported
-						// on lower versions you must remove this option.
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
 					},
 					Containers: []corev1.Container{{
 						Image:           "ubuntu:22.04",
@@ -50,14 +45,7 @@ func (r *GlideinManagerPilotSetReconciler) makeDeploymentForPilotSet(pilotSet *g
 						// Ensure restrictive context for the container
 						// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
 						SecurityContext: &corev1.SecurityContext{
-							RunAsNonRoot:             &[]bool{true}[0],
-							RunAsUser:                &[]int64{1001}[0],
-							AllowPrivilegeEscalation: &[]bool{false}[0],
-							Capabilities: &corev1.Capabilities{
-								Drop: []corev1.Capability{
-									"ALL",
-								},
-							},
+							Privileged: &[]bool{true}[0],
 						},
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "gmos-data",
@@ -143,6 +131,8 @@ type ResourceUpdater[T client.Object] interface {
 	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
 }
 
+// ResourceUpdater implementation that updates a Deployment based on changes
+// in its parent custom resource
 type DeploymentPilotSetUpdater struct {
 	pilotSet *gmosv1alpha1.GlideinManagerPilotSet
 }
@@ -157,6 +147,8 @@ func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r *GlideinManagerPilotS
 	return updated, nil
 }
 
+// ResourceUpdater implementation that updates a Secret's data based on the
+// updated contents of config files in Git
 type DataSecretGitUpdater struct {
 	gitUpdate *gmosClient.RepoUpdate
 }
@@ -188,6 +180,8 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 	return true, nil
 }
 
+// ResourceUpdater implementation that updates a Secret's data key based on the
+// updated contents of a manifest file in Git
 type TokenSecretGitUpdater struct {
 	gitUpdate *gmosClient.RepoUpdate
 }
@@ -216,6 +210,8 @@ func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRe
 	return true, nil
 }
 
+// ResourceUpdater implementation that updates a Secret's value based on the
+// updated contents of a Secret in the glidein manager
 type TokenSecretValueUpdater struct {
 	secValue *gmosClient.SecretValue
 }
@@ -239,23 +235,30 @@ func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSet
 	return true, nil
 }
 
+// ResourceUpdater implementation that updates a Deployment based on the
+// updated contents of a manifest file in Git
 type DeploymentGitUpdater struct {
 	gitUpdate *gmosClient.RepoUpdate
 }
 
-func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
-	dep.Spec.Template.ObjectMeta.Labels["git-hash"] = du.gitUpdate.CurrentCommit
-	// update a label on the deployment
-	config, err := readManifestForNamespace(*du.gitUpdate, dep.Namespace)
-	if err != nil {
-		return false, err
-	}
-	// Todo error handling here
+// Helper function to check that a pointer is both non nil and equal to a value
+func nilSafeEq[T comparable](a *T, b T) bool {
+	return a != nil && *a == b
+}
+
+// Check field-for-field whether the deployment state described in the latest version
+// of the glidein manager config differs from the current state of the deployment.
+// TODO there is probably a more efficient way to do this
+func deploymentWasUpdated(dep *appsv1.Deployment, config PilotSetNamespaceConfig) bool {
+	// TODO there are a lot of places where we could dereference a null pointer here...
 	container := dep.Spec.Template.Spec.Containers[0]
+	securityCtx := dep.Spec.Template.Spec.SecurityContext
 
 	// check whether any fields in the deployment were updated
 	updated := container.Image != config.Image || container.VolumeMounts[0].MountPath != config.Volume.Dst ||
-		container.VolumeMounts[1].MountPath != config.SecretSource.Dst
+		container.VolumeMounts[1].MountPath != config.SecretSource.Dst ||
+		!nilSafeEq(securityCtx.RunAsUser, config.Security.User) || !nilSafeEq(securityCtx.RunAsGroup, config.Security.Group)
+	// Check whether any arrays were updated
 	if len(container.Command) == len(config.Command) {
 		for i := range container.Command {
 			updated = updated || container.Command[i] != config.Command[i]
@@ -272,31 +275,51 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 		updated = true
 	}
 
-	if updated {
-		// Launch parameters
-		dep.Spec.Template.Spec.Containers[0].Image = config.Image
-		dep.Spec.Template.Spec.Containers[0].Command = config.Command
+	return updated
+}
 
-		// Data mount parameters
-		if config.Volume.Src != "" && config.Volume.Dst != "" {
-			dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
-		}
-
-		if config.SecretSource.SecretName != "" && config.SecretSource.Dst != "" {
-			tokenDir, tokenName := path.Split(config.SecretSource.Dst)
-			dep.Spec.Template.Spec.Containers[0].VolumeMounts[1].MountPath = tokenDir
-
-			dep.Spec.Template.Spec.Volumes[1].VolumeSource.Secret.Items = []corev1.KeyToPath{{
-				Key:  config.SecretSource.SecretName,
-				Path: tokenName,
-			}}
-		}
-
-		newEnv := make([]corev1.EnvVar, len(config.Env))
-		for i, val := range config.Env {
-			newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
-		}
-		dep.Spec.Template.Spec.Containers[0].Env = newEnv
+func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
+	dep.Spec.Template.ObjectMeta.Labels["gmos.chtc.wisc.edu/git-hash"] = du.gitUpdate.CurrentCommit
+	// update a label on the deployment
+	config, err := readManifestForNamespace(*du.gitUpdate, dep.Namespace)
+	if err != nil {
+		return false, err
 	}
-	return updated, nil
+	if !deploymentWasUpdated(dep, config) {
+		return false, nil
+	}
+
+	// Launch parameters
+	dep.Spec.Template.Spec.Containers[0].Image = config.Image
+	dep.Spec.Template.Spec.Containers[0].Command = config.Command
+
+	// Data mount parameters
+	if config.Volume.Src != "" && config.Volume.Dst != "" {
+		dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
+	}
+
+	// Token mount parameters
+	if config.SecretSource.SecretName != "" && config.SecretSource.Dst != "" {
+		tokenDir, tokenName := path.Split(config.SecretSource.Dst)
+		dep.Spec.Template.Spec.Containers[0].VolumeMounts[1].MountPath = tokenDir
+
+		dep.Spec.Template.Spec.Volumes[1].VolumeSource.Secret.Items = []corev1.KeyToPath{{
+			Key:  config.SecretSource.SecretName,
+			Path: tokenName,
+		}}
+	}
+
+	// Environment variables
+	newEnv := make([]corev1.EnvVar, len(config.Env))
+	for i, val := range config.Env {
+		newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
+	}
+	dep.Spec.Template.Spec.Containers[0].Env = newEnv
+
+	// Security context parameters
+	dep.Spec.Template.Spec.SecurityContext.RunAsUser = &config.Security.User
+	dep.Spec.Template.Spec.SecurityContext.RunAsGroup = &config.Security.Group
+	dep.Spec.Template.Spec.SecurityContext.FSGroup = &config.Security.Group
+	dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = &[]bool{config.Security.User != 0}[0]
+	return true, nil
 }
