@@ -13,7 +13,10 @@ import (
 )
 
 type UpdateHandler interface {
+	// Update the resources in a namespace based on new data in the Glidein Manager's git repository
 	ApplyGitUpdate(gmosClient.RepoUpdate) error
+
+	// Update the resources in a namespace based on new data in the Glidein Manager's secret store
 	ApplySecretUpdate(gmosClient.SecretValue) error
 }
 

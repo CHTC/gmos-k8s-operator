@@ -95,7 +95,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		}
 		log.Info("Running finalizer on GlideinManagerPilotSet before deletion")
 
-		r.finalizePilotSet(pilotSet)
+		FinalizePilotSet(pilotSet)
 
 		// Refresh the Custom Resource post-finalization
 		if err := r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
@@ -115,83 +115,91 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
-	if err := r.createResourcesForPilotSet(ctx, pilotSet); err != nil {
+	if err := CreateResourcesForPilotSet(r, ctx, pilotSet); err != nil {
 		return ctrl.Result{}, err
 	}
 	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(&PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet},
+	if err := ApplyUpdateToResource(&PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet},
 		pilotSet.Name, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for PilotSet")
 		return ctrl.Result{}, err
 	}
-	AddGlideinManagerWatcher(pilotSet, &PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet})
+	updater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	AddGlideinManagerWatcher(pilotSet, updater)
 	return ctrl.Result{}, nil
 }
 
 // Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
-func (r *GlideinManagerPilotSetReconciler) finalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+func FinalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
 	RemoveGlideinManagerWatcher(pilotSet)
 }
 
-type PilotSetUpdater struct {
+// Struct that captures the state of a PilotSet at the time of Reconciliation.
+// (Potentially improperly) held in memory and used to update the PilotSet's child
+// resources outside of the Reconciliation loop, eg. upon a git update
+type PilotSetReconcileState struct {
 	ctx        context.Context
 	pilotSet   *gmosv1alpha1.GlideinManagerPilotSet
 	reconciler *GlideinManagerPilotSetReconciler
 }
 
-func (pu *PilotSetUpdater) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(pu.ctx)
+// Update the PilotSet's children based on new data in its Glidein Manager's
+// git repository
+func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
+	log := log.FromContext(pr.ctx)
 	log.Info("Got repo update!")
 
 	log.Info("Updating data Secret")
 	sec := &corev1.Secret{}
-	baseName := pu.pilotSet.Name
-	if err := ApplyUpdateToResource(pu, baseName+"-data", sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	baseName := pr.pilotSet.Name
+	if err := ApplyUpdateToResource(pr, baseName+"-data", sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating access token Secret")
 	sec2 := &corev1.Secret{}
-	if err := ApplyUpdateToResource(pu, baseName+"-tokens", sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, baseName+"-tokens", sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating Deployment")
 	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(pu, baseName, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, baseName, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	return nil
 }
 
-func (pu *PilotSetUpdater) ApplySecretUpdate(sv gmosClient.SecretValue) error {
+// Update the PilotSet's children based on new data in its Glidein Manager's
+// secret store
+func (pu *PilotSetReconcileState) ApplySecretUpdate(sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
 	sec := &corev1.Secret{}
 	return ApplyUpdateToResource(pu, pu.pilotSet.Name+"-tokens", sec, &TokenSecretValueUpdater{secValue: &sv})
 }
 
-func CreateResourceIfNotExists[T client.Object](pilotSetUpdater *PilotSetUpdater, name string, resource T, creator ResourceCreator[T]) error {
-	log := log.FromContext(pilotSetUpdater.ctx)
-	if err := pilotSetUpdater.reconciler.Get(
-		pilotSetUpdater.ctx, types.NamespacedName{Name: name, Namespace: pilotSetUpdater.pilotSet.Namespace}, resource); err == nil {
+func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, name string, resource T, creator ResourceCreator[T]) error {
+	log := log.FromContext(reconcileState.ctx)
+	if err := reconcileState.reconciler.Get(
+		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
 		log.Info("Resource already exists, no action needed.")
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, creating it.")
 		resource.SetName(name)
-		resource.SetNamespace(pilotSetUpdater.pilotSet.Namespace)
-		if err := creator.SetResourceValue(pilotSetUpdater.reconciler, pilotSetUpdater.pilotSet, resource); err != nil {
+		resource.SetNamespace(reconcileState.pilotSet.Namespace)
+		if err := creator.SetResourceValue(reconcileState.reconciler, reconcileState.pilotSet, resource); err != nil {
 			log.Error(err, "Unable to set value for new resource")
 		}
-		if err := ctrl.SetControllerReference(pilotSetUpdater.pilotSet, resource, pilotSetUpdater.reconciler.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(reconcileState.pilotSet, resource, reconcileState.reconciler.Scheme); err != nil {
 			return err
 		}
-		if err := pilotSetUpdater.reconciler.Create(pilotSetUpdater.ctx, resource); err != nil {
+		if err := reconcileState.reconciler.Create(reconcileState.ctx, resource); err != nil {
 			log.Error(err, "Unable to create resource")
 			return err
 		}
-		MarkNamespaceOutOfSync(pilotSetUpdater.pilotSet.Namespace)
+		MarkNamespaceOutOfSync(reconcileState.pilotSet.Namespace)
 		return nil
 	} else {
 		log.Error(err, "Unable to get resource")
@@ -201,13 +209,14 @@ func CreateResourceIfNotExists[T client.Object](pilotSetUpdater *PilotSetUpdater
 }
 
 // Update an existing Kubernetes object:
-// 1. Fetch the object by name
-// 2. Apply an
-func ApplyUpdateToResource[T client.Object](pilotSetUpdater *PilotSetUpdater, name string, resource T, resourceUpdater ResourceUpdater[T]) error {
-	log := log.FromContext(pilotSetUpdater.ctx)
-	if err := pilotSetUpdater.reconciler.Get(
-		pilotSetUpdater.ctx, types.NamespacedName{Name: name, Namespace: pilotSetUpdater.pilotSet.Namespace}, resource); err == nil {
-		updated, err := resourceUpdater.UpdateResourceValue(pilotSetUpdater.reconciler, resource)
+// 1. Fetch the object by name via the k8s API
+// 2. Modify the object's data in-memory
+// 3. Push the updated data back to k8s via the API
+func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, name string, resource T, resourceUpdater ResourceUpdater[T]) error {
+	log := log.FromContext(reconcileState.ctx)
+	if err := reconcileState.reconciler.Get(
+		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
+		updated, err := resourceUpdater.UpdateResourceValue(reconcileState.reconciler, resource)
 		if err != nil {
 			log.Error(err, "Unable to apply update to resource value")
 			return err
@@ -216,7 +225,7 @@ func ApplyUpdateToResource[T client.Object](pilotSetUpdater *PilotSetUpdater, na
 			log.Info("No updates needed for resource")
 			return nil
 		}
-		if err := pilotSetUpdater.reconciler.Update(pilotSetUpdater.ctx, resource); err != nil {
+		if err := reconcileState.reconciler.Update(reconcileState.ctx, resource); err != nil {
 			log.Error(err, "Unable to post update to resource")
 			return err
 		}
@@ -231,13 +240,13 @@ func ApplyUpdateToResource[T client.Object](pilotSetUpdater *PilotSetUpdater, na
 	return nil
 }
 
-func (r *GlideinManagerPilotSetReconciler) createResourcesForPilotSet(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for PilotSet custom resource!")
 
 	log.Info("Creating Data Secret if not exists")
 	sec := &corev1.Secret{}
-	pilotSetUpdater := &PilotSetUpdater{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	pilotSetUpdater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
 	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-data", sec, &SecretPilotSetCreator{}); err != nil {
 		return err
 	}
