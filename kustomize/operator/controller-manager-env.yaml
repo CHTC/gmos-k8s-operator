@@ -12,3 +12,5 @@ spec:
         env:
         - name: CLIENT_NAME
           value: gmos-k8s-operator-controller-webservice.gmos-k8s-operator-system.svc.cluster.local
+        - name: WATCH_NAMESPACE
+          value: dev,prod
