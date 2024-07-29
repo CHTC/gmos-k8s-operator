@@ -74,6 +74,15 @@ spec:
         - --leader-elect
         image: controller:latest
         name: manager
+        env:
+        - name: CLIENT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: stats.podIP
+        - name: WATCH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
