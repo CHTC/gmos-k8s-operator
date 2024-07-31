@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,12 +28,14 @@ type ResourceCreator[T client.Object] interface {
 	SetResourceValue(*GlideinManagerPilotSetReconciler, *gmosv1alpha1.GlideinManagerPilotSet, T) error
 }
 
-type DeploymentPilotSetCreator struct {
+type PilotSetDeploymentCreator struct {
 }
 
-func (du *DeploymentPilotSetCreator) SetResourceValue(
+func (du *PilotSetDeploymentCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(pilotSet.Name)
+	labelsMap["gmos.chtc.wisc.edu/app"] = "pilot"
+
 	dep.Spec = appsv1.DeploymentSpec{
 		Replicas: &[]int32{1}[0],
 		Selector: &metav1.LabelSelector{
@@ -89,17 +90,70 @@ func (du *DeploymentPilotSetCreator) SetResourceValue(
 			},
 		},
 	}
+	return nil
+}
 
-	if err := ctrl.SetControllerReference(pilotSet, dep, r.Scheme); err != nil {
-		return err
+type CollectorConfigMapCreator struct {
+}
+
+func (du *CollectorConfigMapCreator) SetResourceValue(
+	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, config *corev1.ConfigMap) error {
+	config.Data = map[string]string{
+		"05-daemon.config": "DAEMON_LIST = COLLECTOR",
 	}
 	return nil
 }
 
-type SecretPilotSetCreator struct {
+type CollectorDeploymentCreator struct {
 }
 
-func (du *SecretPilotSetCreator) SetResourceValue(
+func (du *CollectorDeploymentCreator) SetResourceValue(
+	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
+	labelsMap := labelsForPilotSet(pilotSet.Name)
+	labelsMap["gmos.chtc.wisc.edu/app"] = "collector"
+
+	dep.Spec = appsv1.DeploymentSpec{
+		Replicas: &[]int32{1}[0],
+		Selector: &metav1.LabelSelector{
+			MatchLabels: labelsMap,
+		},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: labelsMap,
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{
+					Image:           "htcondor/base",
+					Name:            "collector",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					VolumeMounts: []corev1.VolumeMount{{
+						Name:      "collector-config",
+						MountPath: "/etc/condor/config.d/05-daemon.config",
+						SubPath:   "05-daemon.config",
+					},
+					},
+				}},
+				Volumes: []corev1.Volume{{
+					Name: "collector-config",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: pilotSet.Name + "-collector-cfg",
+							},
+						},
+					},
+				},
+				},
+			},
+		},
+	}
+	return nil
+}
+
+type EmptySecretCreator struct {
+}
+
+func (du *EmptySecretCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
 	secret.Data = map[string][]byte{
 		"sample.cfg": {},

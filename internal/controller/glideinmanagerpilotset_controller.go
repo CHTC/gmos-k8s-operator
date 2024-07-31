@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -48,6 +49,7 @@ type GlideinManagerPilotSetReconciler struct {
 //+kubebuilder:rbac:groups=apps,namespace=memcached-operator-system,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -73,6 +75,11 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		log.Error(err, "Failed to get GlideinManagerPilotSet")
 		return ctrl.Result{}, err
 	}
+
+	go func() {
+		time.Sleep(5 * time.Second)
+		ExecInCollector(ctx, pilotSet)
+	}()
 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
 	// pilotSet is deleted
@@ -243,23 +250,37 @@ func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for PilotSet custom resource!")
+	pilotSetUpdater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
 
+	log.Info("Creating Resources for Collector deployment")
+	log.Info("Creating Collector ConfigMap if not exists")
+	cfg := &corev1.ConfigMap{}
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-collector-cfg", cfg, &CollectorConfigMapCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Collector ConfigMap if not exists")
+	cDep := &appsv1.Deployment{}
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-collector", cDep, &CollectorDeploymentCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Skeleton Resources for PilotSet deployment")
 	log.Info("Creating Data Secret if not exists")
 	sec := &corev1.Secret{}
-	pilotSetUpdater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-data", sec, &SecretPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-data", sec, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Access Token Secret if not exists")
 	sec2 := &corev1.Secret{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-tokens", sec2, &SecretPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-tokens", sec2, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Deployment if not exists")
 	dep := &appsv1.Deployment{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name, dep, &DeploymentPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name, dep, &PilotSetDeploymentCreator{}); err != nil {
 		return err
 	}
 
