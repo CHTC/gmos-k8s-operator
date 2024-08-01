@@ -153,7 +153,7 @@ func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	log.Info(fmt.Sprintf("Found pod with name: %+v", pod.Name))
 
 	// Exec into the pod to run condor_token_create
-	cmd := []string{"ls", "-l"}
+	cmd := []string{"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"}
 	req := client.CoreV1().RESTClient().Post().Namespace(pilotSet.Namespace).
 		Resource("pods").Name(pod.Name).SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Command: cmd,
@@ -176,7 +176,7 @@ func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	}
 
 	log.Info(fmt.Sprintf("Stdout: %v", outbuf.String()))
-	log.Info(fmt.Sprintf("Stderr: %v", outbuf.String()))
+	log.Info(fmt.Sprintf("Stderr: %v", errbuf.String()))
 
 	return nil
 }

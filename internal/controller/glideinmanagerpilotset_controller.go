@@ -78,7 +78,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	go func() {
-		time.Sleep(30 * time.Second)
+		time.Sleep(60 * time.Second)
 		if err := ExecInCollector(ctx, pilotSet); err != nil {
 			log.Error(err, "Unable to exec in collector")
 		}
