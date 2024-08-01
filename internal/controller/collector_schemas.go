@@ -1,20 +1,12 @@
 package controller
 
 import (
-	"bytes"
-	"context"
-	"fmt"
-
 	"crypto/rand"
+	"errors"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	restclient "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/remotecommand"
-	clientConfig "sigs.k8s.io/controller-runtime/pkg/client/config"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
@@ -125,58 +117,26 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 	return nil
 }
 
-// Utility function to run 'condor_token_create' in the Collector pod
-func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
-	log := log.FromContext(ctx)
-	cfg, err := clientConfig.GetConfig()
-	if err != nil {
-		return err
+// ResourceUpdater implementation that updates a Secret's data key based on the
+// values returned by `condor_token_create` run on a collector
+type CollectorTokenSecretUpdater struct {
+	PilotSetReconcileState
+}
+
+func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
+	// update a label on the deployment
+
+	glideinToken, err := ExecInCollector(ct.ctx, ct.pilotSet, []string{
+		"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"})
+	pilotToken, err2 := ExecInCollector(ct.ctx, ct.pilotSet,
+		[]string{"condor_token_create", "-identity", "pilot@cluster.local", "-key", "NAMESPACE"})
+	if err := errors.Join(err, err2); err != nil {
+		return false, err
 	}
 
-	client, err := restclient.NewForConfig(cfg)
-	if err != nil {
-		return err
+	sec.StringData = map[string]string{
+		"glidein.tkn": glideinToken.Stdout,
+		"pilot.tkn":   pilotToken.Stdout,
 	}
-
-	// Find the collector pod for the pilotSet based on label selector
-	pods, err := client.CoreV1().Pods(pilotSet.Namespace).List(ctx,
-		metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("gmos.chtc.wisc.edu/app=collector, app.kubernetes.io/instance=%v", pilotSet.Name),
-		})
-	if err != nil {
-		return err
-	}
-	if len(pods.Items) != 1 {
-		return fmt.Errorf("expected 1 collector pod for %v, found %v", pilotSet.Name, len(pods.Items))
-	}
-	pod := pods.Items[0]
-	log.Info(fmt.Sprintf("Found pod with name: %+v", pod.Name))
-
-	// Exec into the pod to run condor_token_create
-	cmd := []string{"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"}
-	req := client.CoreV1().RESTClient().Post().Namespace(pilotSet.Namespace).
-		Resource("pods").Name(pod.Name).SubResource("exec").VersionedParams(&corev1.PodExecOptions{
-		Command: cmd,
-		Stdout:  true,
-		Stderr:  true,
-	}, scheme.ParameterCodec)
-
-	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
-	if err != nil {
-		return err
-	}
-
-	outbuf := bytes.Buffer{}
-	errbuf := bytes.Buffer{}
-	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdout: &outbuf,
-		Stderr: &errbuf,
-	}); err != nil {
-		return err
-	}
-
-	log.Info(fmt.Sprintf("Stdout: %v", outbuf.String()))
-	log.Info(fmt.Sprintf("Stderr: %v", errbuf.String()))
-
-	return nil
+	return true, nil
 }

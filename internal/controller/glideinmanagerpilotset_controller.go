@@ -79,8 +79,9 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 
 	go func() {
 		time.Sleep(60 * time.Second)
-		if err := ExecInCollector(ctx, pilotSet); err != nil {
-			log.Error(err, "Unable to exec in collector")
+		ps := PilotSetReconcileState{ctx: ctx, pilotSet: pilotSet, reconciler: r}
+		if err := ApplyUpdateToResource(&ps, "-collector-tokens", &corev1.Secret{}, &CollectorTokenSecretUpdater{PilotSetReconcileState: ps}); !updateErrOk(err) {
+			log.Error(err, "Unable to update secret with collector tokens")
 		}
 	}()
 
@@ -128,14 +129,12 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	if err := CreateResourcesForPilotSet(r, ctx, pilotSet); err != nil {
 		return ctrl.Result{}, err
 	}
-	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(&PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet},
-		pilotSet.Name, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	if err := ApplyUpdateToResource(psState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for PilotSet")
 		return ctrl.Result{}, err
 	}
-	updater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
-	AddGlideinManagerWatcher(pilotSet, updater)
+	AddGlideinManagerWatcher(pilotSet, psState)
 	return ctrl.Result{}, nil
 }
 
@@ -160,21 +159,17 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 	log.Info("Got repo update!")
 
 	log.Info("Updating data Secret")
-	sec := &corev1.Secret{}
-	baseName := pr.pilotSet.Name
-	if err := ApplyUpdateToResource(pr, baseName+"-data", sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, "-data", &corev1.Secret{}, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating access token Secret")
-	sec2 := &corev1.Secret{}
-	if err := ApplyUpdateToResource(pr, baseName+"-tokens", sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, "-tokens", &corev1.Secret{}, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
 	log.Info("Updating Deployment")
-	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(pr, baseName, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, "", &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
@@ -186,8 +181,7 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 func (pu *PilotSetReconcileState) ApplySecretUpdate(sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
-	sec := &corev1.Secret{}
-	return ApplyUpdateToResource(pu, pu.pilotSet.Name+"-tokens", sec, &TokenSecretValueUpdater{secValue: &sv})
+	return ApplyUpdateToResource(pu, "-tokens", &corev1.Secret{}, &TokenSecretValueUpdater{secValue: &sv})
 }
 
 func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, nameSuffix string, resource T, creator ResourceCreator[T]) error {
@@ -223,8 +217,9 @@ func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 // 1. Fetch the object by name via the k8s API
 // 2. Modify the object's data in-memory
 // 3. Push the updated data back to k8s via the API
-func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, name string, resource T, resourceUpdater ResourceUpdater[T]) error {
+func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, nameSuffix string, resource T, resourceUpdater ResourceUpdater[T]) error {
 	log := log.FromContext(reconcileState.ctx)
+	name := reconcileState.pilotSet.Name + nameSuffix
 	if err := reconcileState.reconciler.Get(
 		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
 		updated, err := resourceUpdater.UpdateResourceValue(reconcileState.reconciler, resource)
@@ -256,10 +251,14 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 	log.Info("Got new value for PilotSet custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
 
-	log.Info("Creating Resources for Collector deployment")
-
+	// Collector resources
 	log.Info("Creating Collector Signing Key if not exists")
 	if err := CreateResourceIfNotExists(psState, "-collector-sigkey", &corev1.Secret{}, &CollectorSigningKeyCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Tokens secret if not exists")
+	if err := CreateResourceIfNotExists(psState, "-collector-tokens", &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
@@ -273,7 +272,7 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 		return err
 	}
 
-	log.Info("Creating Skeleton Resources for PilotSet deployment")
+	// PilotSet
 	log.Info("Creating Data Secret if not exists")
 	if err := CreateResourceIfNotExists(psState, "-data", &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
