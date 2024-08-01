@@ -31,7 +31,7 @@ type ResourceCreator[T client.Object] interface {
 type PilotSetDeploymentCreator struct {
 }
 
-func (du *PilotSetDeploymentCreator) SetResourceValue(
+func (*PilotSetDeploymentCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(pilotSet.Name)
 	labelsMap["gmos.chtc.wisc.edu/app"] = "pilot"
@@ -67,6 +67,9 @@ func (du *PilotSetDeploymentCreator) SetResourceValue(
 					}, {
 						Name:      "gmos-secrets",
 						MountPath: "/mnt/gmos-secrets",
+					}, {
+						Name:      "collector-tokens",
+						MountPath: "/mnt/collector-tokens",
 					},
 					},
 					Command: []string{"sleep", "120"},
@@ -85,6 +88,13 @@ func (du *PilotSetDeploymentCreator) SetResourceValue(
 							SecretName: pilotSet.Name + "-tokens",
 						},
 					},
+				}, {
+					Name: "collector-tokens",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: pilotSet.Name + "-collector-tokens",
+						},
+					},
 				},
 				},
 			},
@@ -96,7 +106,7 @@ func (du *PilotSetDeploymentCreator) SetResourceValue(
 type EmptySecretCreator struct {
 }
 
-func (du *EmptySecretCreator) SetResourceValue(
+func (*EmptySecretCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
 	secret.Data = map[string][]byte{
 		"sample.cfg": {},
