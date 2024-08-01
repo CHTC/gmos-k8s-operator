@@ -93,63 +93,6 @@ func (du *PilotSetDeploymentCreator) SetResourceValue(
 	return nil
 }
 
-type CollectorConfigMapCreator struct {
-}
-
-func (du *CollectorConfigMapCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, config *corev1.ConfigMap) error {
-	config.Data = map[string]string{
-		"05-daemon.config": "DAEMON_LIST = COLLECTOR",
-	}
-	return nil
-}
-
-type CollectorDeploymentCreator struct {
-}
-
-func (du *CollectorDeploymentCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
-	labelsMap := labelsForPilotSet(pilotSet.Name)
-	labelsMap["gmos.chtc.wisc.edu/app"] = "collector"
-
-	dep.Spec = appsv1.DeploymentSpec{
-		Replicas: &[]int32{1}[0],
-		Selector: &metav1.LabelSelector{
-			MatchLabels: labelsMap,
-		},
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: labelsMap,
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{
-					Image:           "htcondor/base",
-					Name:            "collector",
-					ImagePullPolicy: corev1.PullIfNotPresent,
-					VolumeMounts: []corev1.VolumeMount{{
-						Name:      "collector-config",
-						MountPath: "/etc/condor/config.d/05-daemon.config",
-						SubPath:   "05-daemon.config",
-					},
-					},
-				}},
-				Volumes: []corev1.Volume{{
-					Name: "collector-config",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: pilotSet.Name + "-collector-cfg",
-							},
-						},
-					},
-				},
-				},
-			},
-		},
-	}
-	return nil
-}
-
 type EmptySecretCreator struct {
 }
 

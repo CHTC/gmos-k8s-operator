@@ -48,6 +48,7 @@ type GlideinManagerPilotSetReconciler struct {
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=apps,namespace=memcached-operator-system,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=pods,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=pods/exec,verbs=create
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
@@ -77,8 +78,10 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	go func() {
-		time.Sleep(5 * time.Second)
-		ExecInCollector(ctx, pilotSet)
+		time.Sleep(30 * time.Second)
+		if err := ExecInCollector(ctx, pilotSet); err != nil {
+			log.Error(err, "Unable to exec in collector")
+		}
 	}()
 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
@@ -187,8 +190,9 @@ func (pu *PilotSetReconcileState) ApplySecretUpdate(sv gmosClient.SecretValue) e
 	return ApplyUpdateToResource(pu, pu.pilotSet.Name+"-tokens", sec, &TokenSecretValueUpdater{secValue: &sv})
 }
 
-func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, name string, resource T, creator ResourceCreator[T]) error {
+func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, nameSuffix string, resource T, creator ResourceCreator[T]) error {
 	log := log.FromContext(reconcileState.ctx)
+	name := reconcileState.pilotSet.Name + nameSuffix
 	if err := reconcileState.reconciler.Get(
 		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
 		log.Info("Resource already exists, no action needed.")
@@ -250,37 +254,38 @@ func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for PilotSet custom resource!")
-	pilotSetUpdater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
 
 	log.Info("Creating Resources for Collector deployment")
-	log.Info("Creating Collector ConfigMap if not exists")
-	cfg := &corev1.ConfigMap{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-collector-cfg", cfg, &CollectorConfigMapCreator{}); err != nil {
+
+	log.Info("Creating Collector Signing Key if not exists")
+	if err := CreateResourceIfNotExists(psState, "-collector-sigkey", &corev1.Secret{}, &CollectorSigningKeyCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Collector ConfigMap if not exists")
-	cDep := &appsv1.Deployment{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-collector", cDep, &CollectorDeploymentCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, "-collector-cfg", &corev1.ConfigMap{}, &CollectorConfigMapCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Collector ConfigMap if not exists")
+	if err := CreateResourceIfNotExists(psState, "-collector", &appsv1.Deployment{}, &CollectorDeploymentCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Skeleton Resources for PilotSet deployment")
 	log.Info("Creating Data Secret if not exists")
-	sec := &corev1.Secret{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-data", sec, &EmptySecretCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, "-data", &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Access Token Secret if not exists")
-	sec2 := &corev1.Secret{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-tokens", sec2, &EmptySecretCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, "-tokens", &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Deployment if not exists")
-	dep := &appsv1.Deployment{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name, dep, &PilotSetDeploymentCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, "", &appsv1.Deployment{}, &PilotSetDeploymentCreator{}); err != nil {
 		return err
 	}
 
