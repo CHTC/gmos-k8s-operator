@@ -78,21 +78,21 @@ func (*PilotSetDeploymentCreator) SetResourceValue(
 					Name: "gmos-data",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: pilotSet.Name + "-data",
+							SecretName: RNData.NameFor(pilotSet),
 						},
 					},
 				}, {
 					Name: "gmos-secrets",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: pilotSet.Name + "-tokens",
+							SecretName: RNTokens.NameFor(pilotSet),
 						},
 					},
 				}, {
 					Name: "collector-tokens",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: pilotSet.Name + "-collector-tokens",
+							SecretName: RNCollectorTokens.NameFor(pilotSet),
 						},
 					},
 				},

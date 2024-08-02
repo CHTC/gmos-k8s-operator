@@ -93,7 +93,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: pilotSet.Name + "-collector-cfg",
+								Name: RNCollectorConfig.NameFor(pilotSet),
 							},
 						},
 					},
@@ -101,7 +101,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 					Name: "collector-sigkey-staging",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: pilotSet.Name + "-collector-sigkey",
+							SecretName: RNCollectorSigkey.NameFor(pilotSet),
 						},
 					},
 				}, {

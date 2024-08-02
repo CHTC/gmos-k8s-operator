@@ -3,9 +3,11 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	restclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -20,6 +22,8 @@ type ExecOutput struct {
 	Stdout string
 	Stderr string
 }
+
+var ErrPodNotRunning = errors.New("pod not in Running state")
 
 // Utility function to run 'condor_token_create' in the Collector pod
 func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, cmd []string) (*ExecOutput, error) {
@@ -47,6 +51,10 @@ func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	}
 	pod := pods.Items[0]
 	log.Info(fmt.Sprintf("Found pod with name: %+v", pod.Name))
+
+	if pod.Status.Phase != v1.PodRunning {
+		return nil, ErrPodNotRunning
+	}
 
 	// Exec into the pod to run condor_token_create
 	req := client.CoreV1().RESTClient().Post().Namespace(pilotSet.Namespace).
