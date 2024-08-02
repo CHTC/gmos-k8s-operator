@@ -2,7 +2,6 @@ package controller
 
 import (
 	"crypto/rand"
-	"errors"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -120,23 +119,17 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 // ResourceUpdater implementation that updates a Secret's data key based on the
 // values returned by `condor_token_create` run on a collector
 type CollectorTokenSecretUpdater struct {
+	glideinToken string
+	pilotToken   string
 	PilotSetReconcileState
 }
 
 func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
 
-	glideinToken, err := ExecInCollector(ct.ctx, ct.pilotSet, []string{
-		"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"})
-	pilotToken, err2 := ExecInCollector(ct.ctx, ct.pilotSet,
-		[]string{"condor_token_create", "-identity", "pilot@cluster.local", "-key", "NAMESPACE"})
-	if err := errors.Join(err, err2); err != nil {
-		return false, err
-	}
-
 	sec.StringData = map[string]string{
-		"glidein.tkn": glideinToken.Stdout,
-		"pilot.tkn":   pilotToken.Stdout,
+		"glidein.tkn": ct.glideinToken,
+		"pilot.tkn":   ct.pilotToken,
 	}
 	return true, nil
 }

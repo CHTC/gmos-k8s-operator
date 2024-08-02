@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	restclient "k8s.io/client-go/kubernetes"
@@ -18,6 +18,79 @@ import (
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
+type CollectorUpdateHandler interface {
+	ShouldUpdateTokens() (bool, error)
+	ApplyTokensUpdate(string, string) error
+}
+
+type CollectorClient struct {
+	ctx               context.Context
+	pilotSet          *gmosv1alpha1.GlideinManagerPilotSet
+	updateHandler     CollectorUpdateHandler
+	tokenUpdateTicker *time.Ticker
+	doneChan          chan (bool)
+}
+
+func (cc *CollectorClient) StartPolling(interval time.Duration) {
+	if cc.tokenUpdateTicker != nil {
+		return
+	}
+
+	cc.tokenUpdateTicker = time.NewTicker(interval)
+	go func() {
+		for {
+			select {
+			case <-cc.tokenUpdateTicker.C:
+				cc.HandleTokenUpdates()
+			case <-cc.doneChan:
+				return
+			}
+		}
+	}()
+}
+
+func (cc *CollectorClient) StopPolling() {
+	cc.doneChan <- true
+}
+
+func (cc *CollectorClient) HandleTokenUpdates() {
+	log := log.FromContext(cc.ctx)
+	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.pilotSet.Namespace))
+	shouldUpdate, err := cc.updateHandler.ShouldUpdateTokens()
+	if err != nil {
+		log.Error(err, "Unable to determine whether to update tokens")
+		return
+	} else if !shouldUpdate {
+		log.Info("No need to update tokens")
+		return
+	}
+
+	glideinToken, err := execInCollector(cc.ctx, cc.pilotSet, []string{
+		"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"})
+	pilotToken, err2 := execInCollector(cc.ctx, cc.pilotSet,
+		[]string{"condor_token_create", "-identity", "pilot@cluster.local", "-key", "NAMESPACE"})
+	if err := errors.Join(err, err2); err != nil {
+		log.Error(err, "Unable to generate new tokens for collector")
+		return
+	}
+
+	if err := cc.updateHandler.ApplyTokensUpdate(glideinToken.Stdout, pilotToken.Stdout); err != nil {
+		log.Error(err, "unable to apply token update")
+	}
+
+}
+
+func NewCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler CollectorUpdateHandler) CollectorClient {
+	return CollectorClient{
+		ctx:           context.TODO(),
+		pilotSet:      pilotSet,
+		updateHandler: updateHandler,
+		doneChan:      make(chan bool),
+	}
+}
+
+var collectorClients = make(map[string]*CollectorClient)
+
 type ExecOutput struct {
 	Stdout string
 	Stderr string
@@ -26,7 +99,7 @@ type ExecOutput struct {
 var ErrPodNotRunning = errors.New("pod not in Running state")
 
 // Utility function to run 'condor_token_create' in the Collector pod
-func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, cmd []string) (*ExecOutput, error) {
+func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, cmd []string) (*ExecOutput, error) {
 	log := log.FromContext(ctx)
 	cfg, err := clientConfig.GetConfig()
 	if err != nil {
@@ -58,7 +131,7 @@ func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 
 	// Exec into the pod to run condor_token_create
 	req := client.CoreV1().RESTClient().Post().Namespace(pilotSet.Namespace).
-		Resource("pods").Name(pod.Name).SubResource("exec").VersionedParams(&corev1.PodExecOptions{
+		Resource("pods").Name(pod.Name).SubResource("exec").VersionedParams(&v1.PodExecOptions{
 		Command: cmd,
 		Stdout:  true,
 		Stderr:  true,
@@ -79,4 +152,33 @@ func ExecInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	}
 
 	return &ExecOutput{Stdout: outbuf.String(), Stderr: errbuf.String()}, nil
+}
+
+func AddCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler CollectorUpdateHandler) error {
+	ctx := context.TODO()
+	log := log.FromContext(ctx)
+
+	if existingClient, exists := collectorClients[pilotSet.Namespace]; !exists {
+		log.Info(fmt.Sprintf("Creating new collector client for namespace %v", pilotSet.Namespace))
+		newClient := NewCollectorClient(pilotSet, updateHandler)
+		newClient.StartPolling(1 * time.Minute)
+		collectorClients[pilotSet.Namespace] = &newClient
+	} else {
+		log.Info(fmt.Sprintf("Collector client already exists for namespace %v, updating", pilotSet.Namespace))
+		existingClient.pilotSet = pilotSet
+		existingClient.updateHandler = updateHandler
+		return nil
+	}
+
+	return nil
+}
+
+func RemoveCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+	ctx := context.TODO()
+	log := log.FromContext(ctx)
+
+	if existingClient, exists := collectorClients[pilotSet.Namespace]; exists {
+		log.Info(fmt.Sprintf("Removing collector client for namespace %v", pilotSet.Namespace))
+		existingClient.StopPolling()
+	}
 }

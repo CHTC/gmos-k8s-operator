@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -77,14 +76,6 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 
-	go func() {
-		time.Sleep(60 * time.Second)
-		ps := PilotSetReconcileState{ctx: ctx, pilotSet: pilotSet, reconciler: r}
-		if err := ApplyUpdateToResource(&ps, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{PilotSetReconcileState: ps}); !updateErrOk(err) {
-			log.Error(err, "Unable to update secret with collector tokens")
-		}
-	}()
-
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
 	// pilotSet is deleted
 	if !controllerutil.ContainsFinalizer(pilotSet, pilotSetFinalizer) {
@@ -135,12 +126,14 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 	AddGlideinManagerWatcher(pilotSet, psState)
+	AddCollectorClient(pilotSet, psState)
 	return ctrl.Result{}, nil
 }
 
 // Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
 func FinalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
 	RemoveGlideinManagerWatcher(pilotSet)
+	RemoveCollectorClient(pilotSet)
 }
 
 // Struct that captures the state of a PilotSet at the time of Reconciliation.
@@ -150,6 +143,31 @@ type PilotSetReconcileState struct {
 	ctx        context.Context
 	pilotSet   *gmosv1alpha1.GlideinManagerPilotSet
 	reconciler *GlideinManagerPilotSetReconciler
+}
+
+// ShouldUpdateTokens implements CollectorUpdateHandler.
+func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
+	name := RNCollectorTokens.NameFor(pr.pilotSet)
+	sec := corev1.Secret{}
+	if err := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: name, Namespace: pr.pilotSet.Namespace}, &sec); err == nil {
+		// TODO check token expiration. For now just check whether secret is populated
+		for _, key := range []string{"glidein.tkn", "pilot.tkn"} {
+			if _, exists := sec.Data[key]; !exists {
+				return true, nil
+			}
+		}
+		return false, nil
+	} else if apierrors.IsNotFound(err) {
+		// Need to wait for resource to be recreated in next reconcile loop
+		return false, nil
+	} else {
+		return false, err
+	}
+}
+
+// ApplyTokensUpdate implements CollectorUpdateHandler.
+func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
+	return ApplyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{glideinToken: glindeinToken, pilotToken: pilotToken})
 }
 
 // Update the PilotSet's children based on new data in its Glidein Manager's

@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type UpdateHandler interface {
+type GlideinManagerUpdateHandler interface {
 	// Update the resources in a namespace based on new data in the Glidein Manager's git repository
 	ApplyGitUpdate(gmosClient.RepoUpdate) error
 
@@ -32,7 +32,7 @@ type NamespaceSyncState struct {
 
 	// Struct with functions that apply changes to the Glidein Manager's data
 	// to a namespace
-	updateHandler UpdateHandler
+	updateHandler GlideinManagerUpdateHandler
 }
 
 type GlideinManagerPoller struct {
@@ -95,7 +95,7 @@ func (p *GlideinManagerPoller) HasUpdateHandlerForNamespace(namespace string) bo
 	return exists
 }
 
-func (p *GlideinManagerPoller) SetUpdateHandler(namespace string, updateHandler UpdateHandler) {
+func (p *GlideinManagerPoller) SetUpdateHandler(namespace string, updateHandler GlideinManagerUpdateHandler) {
 	if !p.HasUpdateHandlerForNamespace(namespace) {
 		p.syncStates[namespace] = &NamespaceSyncState{}
 	}
@@ -176,7 +176,7 @@ var activeGlideinManagerPollers = make(map[string]*GlideinManagerPoller)
 // Add a Glidein Manager Watcher for the given Gldiein Manager to the given PilotSet's namespace
 //
 // Should be Idempotent
-func AddGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler UpdateHandler) error {
+func AddGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler GlideinManagerUpdateHandler) error {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Updating Glidein Manager Watcher for namespace %v", pilotSet.Namespace))
 
