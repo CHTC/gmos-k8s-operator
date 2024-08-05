@@ -11,7 +11,7 @@ type ResourceName string
 
 const (
 	RNBase            ResourceName = ""
-	RNCollectorTokens ResourceName = "-collector-tokens"
+	RNGlideinTokens   ResourceName = "-collector-tokens"
 	RNData            ResourceName = "-data"
 	RNTokens          ResourceName = "-tokens"
 	RNCollector       ResourceName = "-collector"

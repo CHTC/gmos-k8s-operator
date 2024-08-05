@@ -119,8 +119,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 // ResourceUpdater implementation that updates a Secret's data key based on the
 // values returned by `condor_token_create` run on a collector
 type CollectorTokenSecretUpdater struct {
-	glideinToken string
-	pilotToken   string
+	token string
 	PilotSetReconcileState
 }
 
@@ -128,8 +127,7 @@ func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r *GlideinManagerPilo
 	// update a label on the deployment
 
 	sec.StringData = map[string]string{
-		"glidein.tkn": ct.glideinToken,
-		"pilot.tkn":   ct.pilotToken,
+		"collector.tkn": ct.token,
 	}
 	return true, nil
 }

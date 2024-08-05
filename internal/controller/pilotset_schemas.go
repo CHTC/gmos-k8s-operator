@@ -92,7 +92,7 @@ func (*PilotSetDeploymentCreator) SetResourceValue(
 					Name: "collector-tokens",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNCollectorTokens.NameFor(pilotSet),
+							SecretName: RNGlideinTokens.NameFor(pilotSet),
 						},
 					},
 				},
@@ -201,22 +201,8 @@ func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRe
 	if err != nil {
 		return false, err
 	}
-	if config.SecretSource.SecretName == "" || config.SecretSource.Dst == "" {
-		return false, nil
-	}
-
-	tokenMap := make(map[string][]byte)
-	// TODO assumes a single key in the token secret
-	if len(sec.Data) != 1 {
-		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
-	}
-	for _, val := range sec.Data {
-		tokenMap[config.SecretSource.SecretName] = val
-		break
-	}
-	sec.Data = tokenMap
 	SetSecretSourceForNamespace(sec.Namespace, config.SecretSource.SecretName)
-	return true, nil
+	return false, nil
 }
 
 // ResourceUpdater implementation that updates a Secret's value based on the
@@ -227,20 +213,15 @@ type TokenSecretValueUpdater struct {
 
 func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
-	tokenMap := make(map[string][]byte)
 	// TODO assumes a single key in the token secret
-	if len(sec.Data) != 1 {
-		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
+	if len(sec.Data) > 2 {
+		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected <=2)", sec.Namespace, len(sec.Data))
 	}
 	val, err := base64.StdEncoding.DecodeString(du.secValue.Value)
 	if err != nil {
 		return false, err
 	}
-	for key := range sec.Data {
-		tokenMap[key] = val
-		break
-	}
-	sec.Data = tokenMap
+	sec.Data["ospool.tkn"] = val
 	return true, nil
 }
 
@@ -309,13 +290,8 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 
 	// Token mount parameters
 	if config.SecretSource.SecretName != "" && config.SecretSource.Dst != "" {
-		tokenDir, tokenName := path.Split(config.SecretSource.Dst)
+		tokenDir, _ := path.Split(config.SecretSource.Dst)
 		dep.Spec.Template.Spec.Containers[0].VolumeMounts[1].MountPath = tokenDir
-
-		dep.Spec.Template.Spec.Volumes[1].VolumeSource.Secret.Items = []corev1.KeyToPath{{
-			Key:  config.SecretSource.SecretName,
-			Path: tokenName,
-		}}
 	}
 
 	// Environment variables

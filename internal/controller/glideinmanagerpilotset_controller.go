@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -147,27 +148,33 @@ type PilotSetReconcileState struct {
 
 // ShouldUpdateTokens implements CollectorUpdateHandler.
 func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
-	name := RNCollectorTokens.NameFor(pr.pilotSet)
-	sec := corev1.Secret{}
-	if err := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: name, Namespace: pr.pilotSet.Namespace}, &sec); err == nil {
+	glideinName := RNGlideinTokens.NameFor(pr.pilotSet)
+	epName := RNTokens.NameFor(pr.pilotSet)
+	glideinSec := corev1.Secret{}
+	epSec := corev1.Secret{}
+	glideinErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: glideinName, Namespace: pr.pilotSet.Namespace}, &glideinSec)
+	epErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: epName, Namespace: pr.pilotSet.Namespace}, &epSec)
+	if epErr == nil && glideinErr == nil {
 		// TODO check token expiration. For now just check whether secret is populated
-		for _, key := range []string{"glidein.tkn", "pilot.tkn"} {
-			if _, exists := sec.Data[key]; !exists {
+		for _, sec := range []corev1.Secret{glideinSec, epSec} {
+			if _, exists := sec.Data["cluster.tkn"]; !exists {
 				return true, nil
 			}
 		}
 		return false, nil
-	} else if apierrors.IsNotFound(err) {
+	} else if apierrors.IsNotFound(glideinErr) && apierrors.IsNotFound(epErr) {
 		// Need to wait for resource to be recreated in next reconcile loop
 		return false, nil
 	} else {
-		return false, err
+		return false, errors.Join(epErr, glideinErr)
 	}
 }
 
 // ApplyTokensUpdate implements CollectorUpdateHandler.
 func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
-	return ApplyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{glideinToken: glindeinToken, pilotToken: pilotToken})
+	err := ApplyUpdateToResource(pr, RNGlideinTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
+	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
+	return errors.Join(err, err2)
 }
 
 // Update the PilotSet's children based on new data in its Glidein Manager's
@@ -276,7 +283,7 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 	}
 
 	log.Info("Creating Tokens secret if not exists")
-	if err := CreateResourceIfNotExists(psState, RNCollectorTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, RNGlideinTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
