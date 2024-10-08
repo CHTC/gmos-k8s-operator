@@ -146,14 +146,13 @@ type PilotSetReconcileState struct {
 	reconciler *GlideinManagerPilotSetReconciler
 }
 
-// ShouldUpdateTokens implements CollectorUpdateHandler.
+// Check the current state of resources in the PilotSet's namespace to determine
+// whether a new set of ID tokens need to be generated via the local collector
 func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
-	glideinName := RNGlideinTokens.NameFor(pr.pilotSet)
-	epName := RNTokens.NameFor(pr.pilotSet)
 	glideinSec := corev1.Secret{}
 	epSec := corev1.Secret{}
-	glideinErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: glideinName, Namespace: pr.pilotSet.Namespace}, &glideinSec)
-	epErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: epName, Namespace: pr.pilotSet.Namespace}, &epSec)
+	glideinErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: RNGlideinTokens.NameFor(pr.pilotSet), Namespace: pr.pilotSet.Namespace}, &glideinSec)
+	epErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: RNTokens.NameFor(pr.pilotSet), Namespace: pr.pilotSet.Namespace}, &epSec)
 	if epErr == nil && glideinErr == nil {
 		// TODO check token expiration. For now just check whether secret is populated
 		for _, sec := range []corev1.Secret{glideinSec, epSec} {
@@ -163,14 +162,14 @@ func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
 		}
 		return false, nil
 	} else if apierrors.IsNotFound(glideinErr) && apierrors.IsNotFound(epErr) {
-		// Need to wait for resource to be recreated in next reconcile loop
+		// Need to wait for resources to be recreated in next reconcile loop
 		return false, nil
 	} else {
 		return false, errors.Join(epErr, glideinErr)
 	}
 }
 
-// ApplyTokensUpdate implements CollectorUpdateHandler.
+// Place a new set of ID tokens from the local collector into Secrets in the namespaec
 func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
 	err := ApplyUpdateToResource(pr, RNGlideinTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
 	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
@@ -188,10 +187,10 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 		return err
 	}
 
-	log.Info("Updating access token Secret")
-	if err := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
+	// log.Info("Updating access token Secret")
+	// if err := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	// 	return err
+	// }
 
 	log.Info("Updating Deployment")
 	if err := ApplyUpdateToResource(pr, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
@@ -203,12 +202,16 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 
 // Update the PilotSet's children based on new data in its Glidein Manager's
 // secret store
-func (pu *PilotSetReconcileState) ApplySecretUpdate(sv gmosClient.SecretValue) error {
+func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
-	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secValue: &sv})
+	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
 }
 
+// Create a new Kubernetes object:
+// 1. Check that a resource with the given name doesn't yet exist in the namespace
+// 2. Create an initial schema for the object in-memory
+// 3. Post the newly created object to k8s via the API
 func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, creator ResourceCreator[T]) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.NameFor(reconcileState.pilotSet)

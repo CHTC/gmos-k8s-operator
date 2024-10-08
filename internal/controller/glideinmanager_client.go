@@ -17,15 +17,12 @@ type GlideinManagerUpdateHandler interface {
 	ApplyGitUpdate(gmosClient.RepoUpdate) error
 
 	// Update the resources in a namespace based on new data in the Glidein Manager's secret store
-	ApplySecretUpdate(gmosClient.SecretValue) error
+	ApplySecretUpdate(PilotSetSecretSource, gmosClient.SecretValue) error
 }
 
 type NamespaceSyncState struct {
 	// Last commit to which the namespace was successfully updated
 	currentCommit string
-
-	// Secret from the Glidein Manager that should be used in the namespace
-	secretName string
 
 	// Last secret version to which the namespace was successfully updated
 	currentSecretVersion string
@@ -33,6 +30,9 @@ type NamespaceSyncState struct {
 	// Struct with functions that apply changes to the Glidein Manager's data
 	// to a namespace
 	updateHandler GlideinManagerUpdateHandler
+
+	// Hold the latest config for the namespace from the upstream glidein manager
+	currentConfig PilotSetNamespaceConfig
 }
 
 type GlideinManagerPoller struct {
@@ -115,6 +115,14 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 			continue
 		}
 		log.Info(fmt.Sprintf("Updating namespace %v to commit %v with updater %+v", namespace, repoUpdate.CurrentCommit, syncState))
+
+		config, err := readManifestForNamespace(repoUpdate, namespace)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Git repo contains invalid manifest for namespace %v", namespace))
+			continue
+		}
+		syncState.currentConfig = config
+
 		if err := syncState.updateHandler.ApplyGitUpdate(repoUpdate); err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while handling repo update for namespace %v", namespace))
 		} else {
@@ -127,11 +135,13 @@ func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
 	for namespace, syncState := range p.syncStates {
-		// Only check on namespaces with a secret name specified
-		if syncState.secretName == "" {
+		secretName := syncState.currentConfig.SecretSource.SecretName
+		secretDst := syncState.currentConfig.SecretSource.Dst
+		// Only check on namespaces with a secret name and config specified
+		if secretName == "" || secretDst == "" {
 			continue
 		}
-		nextSecret, err := p.client.GetSecret(syncState.secretName)
+		nextSecret, err := p.client.GetSecret(syncState.currentConfig.SecretSource.SecretName)
 		if err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while fetching secret for namespace %v", namespace))
 			continue
@@ -141,7 +151,7 @@ func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 		}
 
 		log.Info(fmt.Sprintf("Updating namespace %v to secret %v, version %v", namespace, nextSecret.Name, nextSecret.Version))
-		if err := syncState.updateHandler.ApplySecretUpdate(nextSecret); err != nil {
+		if err := syncState.updateHandler.ApplySecretUpdate(syncState.currentConfig.SecretSource, nextSecret); err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while handling secret update for namespace %v", namespace))
 		} else {
 			syncState.currentSecretVersion = nextSecret.Version
@@ -210,13 +220,13 @@ func SetSecretSourceForNamespace(namespace string, secretName string) {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Setting secret source to %v for namespace %v", secretName, namespace))
 
-	for _, poller := range activeGlideinManagerPollers {
-		if poller.HasUpdateHandlerForNamespace(namespace) {
-			updater := poller.syncStates[namespace]
-			updater.secretName = secretName
-			break
-		}
-	}
+	// for _, poller := range activeGlideinManagerPollers {
+	// 	if poller.HasUpdateHandlerForNamespace(namespace) {
+	// 		updater := poller.syncStates[namespace]
+	// 		updater.secretName = secretName
+	// 		break
+	// 	}
+	// }
 }
 
 func MarkNamespaceOutOfSync(namespace string) {

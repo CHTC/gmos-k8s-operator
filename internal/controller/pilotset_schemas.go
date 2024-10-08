@@ -189,39 +189,29 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 	return true, nil
 }
 
-// ResourceUpdater implementation that updates a Secret's data key based on the
-// updated contents of a manifest file in Git
-type TokenSecretGitUpdater struct {
-	gitUpdate *gmosClient.RepoUpdate
-}
-
-func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
-	// update a label on the deployment
-	config, err := readManifestForNamespace(*du.gitUpdate, sec.Namespace)
-	if err != nil {
-		return false, err
-	}
-	SetSecretSourceForNamespace(sec.Namespace, config.SecretSource.SecretName)
-	return false, nil
-}
-
 // ResourceUpdater implementation that updates a Secret's value based on the
 // updated contents of a Secret in the glidein manager
 type TokenSecretValueUpdater struct {
-	secValue *gmosClient.SecretValue
+	secSource *PilotSetSecretSource
+	secValue  *gmosClient.SecretValue
 }
 
 func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
 	// TODO assumes a single key in the token secret
 	if len(sec.Data) > 2 {
-		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected <=2)", sec.Namespace, len(sec.Data))
+		// TODO is this validation needed?
+		// return false, fmt.Errorf("token secret for namespace %v has %v keys (expected <=2)", sec.Namespace, len(sec.Data))
 	}
 	val, err := base64.StdEncoding.DecodeString(du.secValue.Value)
 	if err != nil {
 		return false, err
 	}
-	sec.Data["ospool.tkn"] = val
+	// Token mount parameters
+	if du.secSource.Dst != "" {
+		_, tokenName := path.Split(du.secSource.Dst)
+		sec.Data[tokenName] = val
+	}
 	return true, nil
 }
 
