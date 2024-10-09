@@ -103,13 +103,15 @@ func (*PilotSetDeploymentCreator) SetResourceValue(
 	return nil
 }
 
+const EMPTY_MAP_KEY string = "sample.cfg"
+
 type EmptySecretCreator struct {
 }
 
 func (*EmptySecretCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
 	secret.Data = map[string][]byte{
-		"sample.cfg": {},
+		EMPTY_MAP_KEY: {},
 	}
 	return nil
 }
@@ -186,6 +188,7 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 		fileMap[entry.Name()] = data
 	}
 	sec.Data = fileMap
+
 	return true, nil
 }
 
@@ -212,6 +215,10 @@ func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSet
 		_, tokenName := path.Split(du.secSource.Dst)
 		sec.Data[tokenName] = val
 	}
+
+	// Since we're not fully recreating the map, ensure that the initial placeholder key pair is removed
+	delete(sec.Data, EMPTY_MAP_KEY)
+
 	return true, nil
 }
 

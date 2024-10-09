@@ -123,11 +123,14 @@ type CollectorTokenSecretUpdater struct {
 	PilotSetReconcileState
 }
 
+// Set the collector.tkn
 func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
-	// update a label on the deployment
-
 	sec.StringData = map[string]string{
 		"collector.tkn": ct.token,
 	}
+
+	// Since we're not fully recreating the map, ensure that the initial placeholder key pair is removed
+	delete(sec.Data, EMPTY_MAP_KEY)
+
 	return true, nil
 }

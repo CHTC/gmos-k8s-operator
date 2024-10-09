@@ -10,4 +10,4 @@ metadata:
   name: glideinmanagerpilotset-sample
 spec:
   glideinManagerUrl: http://gm-file-server-webservice.dev.svc.cluster.local
-  size: 3
+  size: 1
