@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/created-by: gmos-k8s-operator
     app.kubernetes.io/part-of: gmos-k8s-operator
     app.kubernetes.io/managed-by: kustomize
-  name: system
+  name: dev
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -1,8 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gmos-k8s-operator-controller-manager
-  namespace: gmos-k8s-operator-system
+  name: glidein-manager-controller-manager
+  namespace: glidein-manager-dev
 spec:
   template:
     spec:
@@ -11,6 +11,6 @@ spec:
         imagePullPolicy: Never
         env:
         - name: CLIENT_NAME
-          value: gmos-k8s-operator-controller-webservice.gmos-k8s-operator-system.svc.cluster.local
+          value: glidein-manager-controller-webservice.glidein-manager-dev.svc.cluster.local
         - name: WATCH_NAMESPACE
           value: dev #,prod
