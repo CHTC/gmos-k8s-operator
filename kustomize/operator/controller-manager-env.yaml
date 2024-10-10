@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: glidein-manager-controller-manager
-  namespace: glidein-manager-dev
+  namespace: glidein-manager-operator
 spec:
   template:
     spec:
@@ -11,6 +11,6 @@ spec:
         imagePullPolicy: Never
         env:
         - name: CLIENT_NAME
-          value: glidein-manager-controller-webservice.glidein-manager-dev.svc.cluster.local
+          value: glidein-manager-controller-webservice.glidein-manager-operator.svc.cluster.local
         - name: WATCH_NAMESPACE
           value: dev #,prod

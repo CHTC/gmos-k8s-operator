@@ -1,2 +1,2 @@
 clients:
-  - name: glidein-manager-controller-webservice.glidein-manager-dev.svc.cluster.local
+  - name: glidein-manager-controller-webservice.glidein-manager-operator.svc.cluster.local
