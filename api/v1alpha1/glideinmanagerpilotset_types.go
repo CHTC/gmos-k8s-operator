@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -35,6 +36,9 @@ type GlideinManagerPilotSetSpec struct {
 
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`
+
+	// size is the count of pilots to include in this set
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet

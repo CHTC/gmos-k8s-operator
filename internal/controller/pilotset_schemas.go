@@ -149,12 +149,13 @@ type DeploymentPilotSetUpdater struct {
 }
 
 func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
-	// TODO
-	updated := false
+	updated := true
 	if *dep.Spec.Replicas != du.pilotSet.Spec.Size {
 		dep.Spec.Replicas = &du.pilotSet.Spec.Size
-		updated = true
 	}
+
+	// TODO how to check whether changes occurred here?
+	dep.Spec.Template.Spec.Containers[0].Resources = du.pilotSet.Spec.Resources
 	return updated, nil
 }
 
