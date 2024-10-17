@@ -253,8 +253,8 @@ func deploymentWasUpdated(dep *appsv1.Deployment, config PilotSetNamespaceConfig
 	} else {
 		updated = true
 	}
-	if len(container.Env) == len(config.Env) {
-		for i := range container.Env {
+	if len(container.Env) == len(config.Env)+1 {
+		for i := range config.Env {
 			updated = updated || container.Env[i].Name != config.Env[i].Name ||
 				container.Env[i].Value != config.Env[i].Value
 		}
@@ -272,6 +272,7 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 	if err != nil {
 		return false, err
 	}
+
 	if !deploymentWasUpdated(dep, config) {
 		return false, nil
 	}
@@ -292,10 +293,11 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 	}
 
 	// Environment variables
-	newEnv := make([]corev1.EnvVar, len(config.Env))
+	newEnv := make([]corev1.EnvVar, len(config.Env)+1)
 	for i, val := range config.Env {
 		newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
 	}
+	newEnv[len(config.Env)] = corev1.EnvVar{Name: "LOCAL_POOL", Value: fmt.Sprintf("%s%s.%s.svc.cluster.local", dep.Name, RNCollector, dep.Namespace)}
 	dep.Spec.Template.Spec.Containers[0].Env = newEnv
 
 	// Security context parameters

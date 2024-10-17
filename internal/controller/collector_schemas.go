@@ -6,6 +6,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
@@ -113,6 +114,30 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 			},
 		},
 	}
+	return nil
+}
+
+type CollectorServiceCreator struct {
+}
+
+func (du *CollectorServiceCreator) SetResourceValue(
+	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, svc *corev1.Service) error {
+	labelsMap := labelsForPilotSet(pilotSet.Name)
+	svc.Labels = labelsMap
+	svc.Spec = corev1.ServiceSpec{
+		Selector: map[string]string{
+			"gmos.chtc.wisc.edu/app": "collector",
+		},
+		Ports: []corev1.ServicePort{
+			{
+				Name:       "collector",
+				Protocol:   "TCP",
+				Port:       9618,
+				TargetPort: intstr.FromInt(9618),
+			},
+		},
+	}
+
 	return nil
 }
 

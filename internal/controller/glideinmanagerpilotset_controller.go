@@ -295,8 +295,13 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 		return err
 	}
 
-	log.Info("Creating Collector ConfigMap if not exists")
+	log.Info("Creating Collector Deployment if not exists")
 	if err := CreateResourceIfNotExists(psState, RNCollector, &appsv1.Deployment{}, &CollectorDeploymentCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Collector Service if not exists")
+	if err := CreateResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{}); err != nil {
 		return err
 	}
 
