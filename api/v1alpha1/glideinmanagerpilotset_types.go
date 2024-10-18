@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -35,6 +36,18 @@ type GlideinManagerPilotSetSpec struct {
 
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`
+
+	// resource requests and limits for glidein pods
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// PriorityClass for glidein pods
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// NodeAffinity for glidein pods
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations for glidein pods
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
 // GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet

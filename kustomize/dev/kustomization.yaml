@@ -7,3 +7,4 @@ bases:
 resources:
   - namespace.yaml
   - pilot-set.yaml
+  - priorityclasses.yaml

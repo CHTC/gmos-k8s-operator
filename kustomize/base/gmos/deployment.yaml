@@ -33,7 +33,7 @@ spec:
           mountPath: /etc/gm-file-server/data
         resources:
           limits:
-            memory: 4Gi
+            memory: 2Gi
             cpu: "1"
           requests:
             memory: 2Gi

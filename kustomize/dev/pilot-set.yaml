@@ -10,4 +10,19 @@ metadata:
   name: glideinmanagerpilotset-sample
 spec:
   glideinManagerUrl: http://gm-file-server-webservice.dev.svc.cluster.local
-  size: 1
+  size: 6
+  priorityClassName: low-priority
+  tolerations:
+  - key: "foo"
+    operator: "Equal"
+    value: "bar"
+    effect: "NoSchedule"
+  nodeSelector:
+    kubernetes.io/hostname: minikube
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "100M"
+    limits:
+      cpu: "200m"
+      memory: "100M"

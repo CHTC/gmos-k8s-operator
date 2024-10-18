@@ -149,13 +149,14 @@ type DeploymentPilotSetUpdater struct {
 }
 
 func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
-	// TODO
-	updated := false
-	if *dep.Spec.Replicas != du.pilotSet.Spec.Size {
-		dep.Spec.Replicas = &du.pilotSet.Spec.Size
-		updated = true
-	}
-	return updated, nil
+	updateSpec := du.pilotSet.Spec
+	dep.Spec.Replicas = &updateSpec.Size
+	dep.Spec.Template.Spec.PriorityClassName = updateSpec.PriorityClassName
+	dep.Spec.Template.Spec.Containers[0].Resources = updateSpec.Resources
+	dep.Spec.Template.Spec.Tolerations = updateSpec.Tolerations
+	dep.Spec.Template.Spec.NodeSelector = updateSpec.NodeSelector
+	// at least one thing should have changed if we're re-reconciling, so return true
+	return true, nil
 }
 
 // ResourceUpdater implementation that updates a Secret's data based on the
