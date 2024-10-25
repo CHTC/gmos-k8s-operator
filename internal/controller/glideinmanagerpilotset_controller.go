@@ -23,6 +23,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -36,10 +37,23 @@ import (
 
 const pilotSetFinalizer = "gmos.chtc.wisc.edu/finalizer"
 
+type Reconciler interface {
+	GetClient() client.Client
+	GetScheme() *runtime.Scheme
+}
+
 // GlideinManagerPilotSetReconciler reconciles a GlideinManagerPilotSet object
 type GlideinManagerPilotSetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+}
+
+func (r *GlideinManagerPilotSetReconciler) GetClient() client.Client {
+	return r.Client
+}
+
+func (r *GlideinManagerPilotSetReconciler) GetScheme() *runtime.Scheme {
+	return r.Scheme
 }
 
 //+kubebuilder:rbac:groups=gmos.chtc.wisc.edu,namespace=memcached-operator-system,resources=glideinmanagerpilotsets,verbs=get;list;watch;create;update;patch;delete
@@ -117,15 +131,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
-	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
-	if err := CreateResourcesForPilotSet(r, ctx, pilotSet); err != nil {
-		return ctrl.Result{}, err
-	}
-	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
-	if err := ApplyUpdateToResource(psState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
-		log.Error(err, "Unable to update Deployment for PilotSet")
-		return ctrl.Result{}, err
-	}
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 	AddGlideinManagerWatcher(pilotSet, psState)
 	AddCollectorClient(pilotSet, psState)
 	return ctrl.Result{}, nil
@@ -142,8 +148,8 @@ func FinalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
 // resources outside of the Reconciliation loop, eg. upon a git update
 type PilotSetReconcileState struct {
 	ctx        context.Context
-	pilotSet   *gmosv1alpha1.GlideinManagerPilotSet
-	reconciler *GlideinManagerPilotSetReconciler
+	resource   metav1.Object
+	reconciler Reconciler
 }
 
 // Check the current state of resources in the PilotSet's namespace to determine
@@ -151,8 +157,8 @@ type PilotSetReconcileState struct {
 func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
 	glideinSec := corev1.Secret{}
 	epSec := corev1.Secret{}
-	glideinErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: RNGlideinTokens.NameFor(pr.pilotSet), Namespace: pr.pilotSet.Namespace}, &glideinSec)
-	epErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: RNTokens.NameFor(pr.pilotSet), Namespace: pr.pilotSet.Namespace}, &epSec)
+	glideinErr := pr.reconciler.GetClient().Get(pr.ctx, types.NamespacedName{Name: RNGlideinTokens.NameFor(pr.resource), Namespace: pr.resource.GetNamespace()}, &glideinSec)
+	epErr := pr.reconciler.GetClient().Get(pr.ctx, types.NamespacedName{Name: RNTokens.NameFor(pr.resource), Namespace: pr.resource.GetNamespace()}, &epSec)
 	if epErr == nil && glideinErr == nil {
 		// TODO check token expiration. For now just check whether secret is populated
 		for _, sec := range []corev1.Secret{glideinSec, epSec} {
@@ -214,25 +220,25 @@ func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource PilotSetSecretSour
 // 3. Post the newly created object to k8s via the API
 func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, creator ResourceCreator[T]) error {
 	log := log.FromContext(reconcileState.ctx)
-	name := resourceName.NameFor(reconcileState.pilotSet)
-	if err := reconcileState.reconciler.Get(
-		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
+	name := resourceName.NameFor(reconcileState.resource)
+	if err := reconcileState.reconciler.GetClient().Get(
+		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()}, resource); err == nil {
 		log.Info("Resource already exists, no action needed.")
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, creating it.")
 		resource.SetName(name)
-		resource.SetNamespace(reconcileState.pilotSet.Namespace)
-		if err := creator.SetResourceValue(reconcileState.reconciler, reconcileState.pilotSet, resource); err != nil {
+		resource.SetNamespace(reconcileState.resource.GetNamespace())
+		if err := creator.SetResourceValue(reconcileState.reconciler, reconcileState.resource, resource); err != nil {
 			log.Error(err, "Unable to set value for new resource")
 		}
-		if err := ctrl.SetControllerReference(reconcileState.pilotSet, resource, reconcileState.reconciler.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(reconcileState.resource, resource, reconcileState.reconciler.GetScheme()); err != nil {
 			return err
 		}
-		if err := reconcileState.reconciler.Create(reconcileState.ctx, resource); err != nil {
+		if err := reconcileState.reconciler.GetClient().Create(reconcileState.ctx, resource); err != nil {
 			log.Error(err, "Unable to create resource")
 			return err
 		}
-		MarkNamespaceOutOfSync(reconcileState.pilotSet.Namespace)
+		MarkNamespaceOutOfSync(reconcileState.resource.GetNamespace())
 		return nil
 	} else {
 		log.Error(err, "Unable to get resource")
@@ -247,9 +253,9 @@ func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 // 3. Push the updated data back to k8s via the API
 func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, resourceUpdater ResourceUpdater[T]) error {
 	log := log.FromContext(reconcileState.ctx)
-	name := resourceName.NameFor(reconcileState.pilotSet)
-	if err := reconcileState.reconciler.Get(
-		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
+	name := resourceName.NameFor(reconcileState.resource)
+	if err := reconcileState.reconciler.GetClient().Get(
+		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()}, resource); err == nil {
 		updated, err := resourceUpdater.UpdateResourceValue(reconcileState.reconciler, resource)
 		if err != nil {
 			log.Error(err, "Unable to apply update to resource value")
@@ -259,7 +265,7 @@ func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 			log.Info("No updates needed for resource")
 			return nil
 		}
-		if err := reconcileState.reconciler.Update(reconcileState.ctx, resource); err != nil {
+		if err := reconcileState.reconciler.GetClient().Update(reconcileState.ctx, resource); err != nil {
 			log.Error(err, "Unable to post update to resource")
 			return err
 		}
@@ -277,16 +283,11 @@ func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for PilotSet custom resource!")
-	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: &gmosv1alpha1.GlideinSet{}}
 
 	// Collector resources
 	log.Info("Creating Collector Signing Key if not exists")
 	if err := CreateResourceIfNotExists(psState, RNCollectorSigkey, &corev1.Secret{}, &CollectorSigningKeyCreator{}); err != nil {
-		return err
-	}
-
-	log.Info("Creating Tokens secret if not exists")
-	if err := CreateResourceIfNotExists(psState, RNGlideinTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
@@ -302,6 +303,19 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 
 	log.Info("Creating Collector Service if not exists")
 	if err := CreateResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSet) error {
+	log := log.FromContext(ctx)
+	log.Info("Got new value for GlideinSet custom resource!")
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
+
+	log.Info("Creating Tokens secret if not exists")
+	if err := CreateResourceIfNotExists(psState, RNGlideinTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 

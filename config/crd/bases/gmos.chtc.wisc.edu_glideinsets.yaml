@@ -33,6 +33,8 @@ spec:
           metadata:
             type: object
           spec:
+            description: Collection of Glideins sharing a priority class, per-pod
+              resource allocation, and node affinity
             properties:
               nodeSelector:
                 additionalProperties:

@@ -34,22 +34,11 @@ type GlideinManagerPilotSetSpec struct {
 	// rather than the clients
 	GlideinManagerUrl string `json:"glideinManagerUrl,omitempty"`
 
-	// size is the count of pilots to include in this set
-	Size int32 `json:"size,omitempty"`
-
-	// resource requests and limits for glidein pods
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
-
-	// PriorityClass for glidein pods
-	PriorityClassName string `json:"priorityClassName,omitempty"`
-
-	// NodeAffinity for glidein pods
-	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
-
-	// Tolerations for glidein pods
-	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// Collection of Glidein deployment specs
+	GlideinSets []GlideinSetSpec `json:"glideinSets"`
 }
 
+// Collection of Glideins sharing a priority class, per-pod resource allocation, and node affinity
 type GlideinSetSpec struct {
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`

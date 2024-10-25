@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,6 +36,14 @@ type GlideinSetReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+func (r *GlideinSetReconciler) GetClient() client.Client {
+	return r.Client
+}
+
+func (r *GlideinSetReconciler) GetScheme() *runtime.Scheme {
+	return r.Scheme
+}
+
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
@@ -49,9 +58,9 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log.Info("Running reconcile")
 
 	// Check the namespace for a PilotSet CRD,
-	pilotSet := &gmosv1alpha1.GlideinSet{}
+	glideinSet := &gmosv1alpha1.GlideinSet{}
 
-	if err := r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("GlideinSet resource not found. It is either deleted or not created.")
 			return ctrl.Result{}, nil
@@ -62,8 +71,18 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
 	// pilotSet is deleted
-	if !controllerutil.ContainsFinalizer(pilotSet, pilotSetFinalizer) {
+	if !controllerutil.ContainsFinalizer(glideinSet, pilotSetFinalizer) {
 		// TODO!
+	}
+
+	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
+	if err := CreateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+		return ctrl.Result{}, err
+	}
+	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
+	if err := ApplyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
+		log.Error(err, "Unable to update Deployment for GlideinSet")
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil

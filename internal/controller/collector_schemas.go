@@ -7,8 +7,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-
-	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
 // Schema entries for the collector
@@ -17,7 +15,7 @@ type CollectorSigningKeyCreator struct {
 }
 
 func (cc *CollectorSigningKeyCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
+	r Reconciler, resource metav1.Object, secret *corev1.Secret) error {
 	keyLen := 256
 	b := make([]byte, keyLen)
 	if _, err := rand.Read(b); err != nil {
@@ -33,7 +31,7 @@ type CollectorConfigMapCreator struct {
 }
 
 func (du *CollectorConfigMapCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, config *corev1.ConfigMap) error {
+	r Reconciler, resource metav1.Object, config *corev1.ConfigMap) error {
 	config.Data = map[string]string{
 		"05-daemon.config": "DAEMON_LIST = COLLECTOR",
 	}
@@ -44,8 +42,8 @@ type CollectorDeploymentCreator struct {
 }
 
 func (du *CollectorDeploymentCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
-	labelsMap := labelsForPilotSet(pilotSet.Name)
+	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
+	labelsMap := labelsForPilotSet(resource.GetName())
 	labelsMap["gmos.chtc.wisc.edu/app"] = "collector"
 
 	dep.Spec = appsv1.DeploymentSpec{
@@ -93,7 +91,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: RNCollectorConfig.NameFor(pilotSet),
+								Name: RNCollectorConfig.NameFor(resource),
 							},
 						},
 					},
@@ -101,7 +99,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 					Name: "collector-sigkey-staging",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNCollectorSigkey.NameFor(pilotSet),
+							SecretName: RNCollectorSigkey.NameFor(resource),
 						},
 					},
 				}, {
@@ -121,8 +119,8 @@ type CollectorServiceCreator struct {
 }
 
 func (du *CollectorServiceCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, svc *corev1.Service) error {
-	labelsMap := labelsForPilotSet(pilotSet.Name)
+	r Reconciler, resource metav1.Object, svc *corev1.Service) error {
+	labelsMap := labelsForPilotSet(resource.GetName())
 	svc.Labels = labelsMap
 	svc.Spec = corev1.ServiceSpec{
 		Selector: map[string]string{
@@ -149,7 +147,7 @@ type CollectorTokenSecretUpdater struct {
 }
 
 // Set the collector.tkn
-func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
+func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
 	sec.StringData = map[string]string{
 		"collector.tkn": ct.token,
 	}

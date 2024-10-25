@@ -19,21 +19,21 @@ import (
 // Generic interface for a struct that contains a method which updates the structure of a
 // Kubernetes Resource
 type ResourceUpdater[T client.Object] interface {
-	UpdateResourceValue(*GlideinManagerPilotSetReconciler, T) (bool, error)
+	UpdateResourceValue(Reconciler, T) (bool, error)
 }
 
 // Generic interface for a struct that creates a Kubernetes resource that
 // doesn't yet exist
 type ResourceCreator[T client.Object] interface {
-	SetResourceValue(*GlideinManagerPilotSetReconciler, *gmosv1alpha1.GlideinManagerPilotSet, T) error
+	SetResourceValue(Reconciler, metav1.Object, T) error
 }
 
 type PilotSetDeploymentCreator struct {
 }
 
 func (*PilotSetDeploymentCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
-	labelsMap := labelsForPilotSet(pilotSet.Name)
+	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
+	labelsMap := labelsForPilotSet(resource.GetName())
 	labelsMap["gmos.chtc.wisc.edu/app"] = "pilot"
 
 	dep.Spec = appsv1.DeploymentSpec{
@@ -78,21 +78,21 @@ func (*PilotSetDeploymentCreator) SetResourceValue(
 					Name: "gmos-data",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNData.NameFor(pilotSet),
+							SecretName: RNData.NameFor(resource),
 						},
 					},
 				}, {
 					Name: "gmos-secrets",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNTokens.NameFor(pilotSet),
+							SecretName: RNTokens.NameFor(resource),
 						},
 					},
 				}, {
 					Name: "collector-tokens",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNGlideinTokens.NameFor(pilotSet),
+							SecretName: RNGlideinTokens.NameFor(resource),
 						},
 					},
 				},
@@ -109,7 +109,7 @@ type EmptySecretCreator struct {
 }
 
 func (*EmptySecretCreator) SetResourceValue(
-	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
+	r Reconciler, resource metav1.Object, secret *corev1.Secret) error {
 	secret.Data = map[string][]byte{
 		EMPTY_MAP_KEY: {},
 	}
@@ -145,11 +145,11 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 // ResourceUpdater implementation that updates a Deployment based on changes
 // in its parent custom resource
 type DeploymentPilotSetUpdater struct {
-	pilotSet *gmosv1alpha1.GlideinManagerPilotSet
+	glideinSet *gmosv1alpha1.GlideinSet
 }
 
-func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
-	updateSpec := du.pilotSet.Spec
+func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
+	updateSpec := du.glideinSet.Spec
 	dep.Spec.Replicas = &updateSpec.Size
 	dep.Spec.Template.Spec.PriorityClassName = updateSpec.PriorityClassName
 	dep.Spec.Template.Spec.Containers[0].Resources = updateSpec.Resources
@@ -165,7 +165,7 @@ type DataSecretGitUpdater struct {
 	gitUpdate *gmosClient.RepoUpdate
 }
 
-func (du *DataSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
+func (du *DataSecretGitUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
 	config, err := readManifestForNamespace(*du.gitUpdate, sec.Namespace)
 	if err != nil {
@@ -200,7 +200,7 @@ type TokenSecretValueUpdater struct {
 	secValue  *gmosClient.SecretValue
 }
 
-func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
+func (du *TokenSecretValueUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
 	// TODO assumes a single key in the token secret
 	if len(sec.Data) > 2 {
@@ -266,7 +266,7 @@ func deploymentWasUpdated(dep *appsv1.Deployment, config PilotSetNamespaceConfig
 	return updated
 }
 
-func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, dep *appsv1.Deployment) (bool, error) {
+func (du *DeploymentGitUpdater) UpdateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
 	dep.Spec.Template.ObjectMeta.Labels["gmos.chtc.wisc.edu/git-hash"] = du.gitUpdate.CurrentCommit
 	// update a label on the deployment
 	config, err := readManifestForNamespace(*du.gitUpdate, dep.Namespace)
