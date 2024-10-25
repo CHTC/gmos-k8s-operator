@@ -50,8 +50,31 @@ type GlideinManagerPilotSetSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
+type GlideinSetSpec struct {
+	// size is the count of pilots to include in this set
+	Size int32 `json:"size,omitempty"`
+
+	// resource requests and limits for glidein pods
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// PriorityClass for glidein pods
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// NodeAffinity for glidein pods
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations for glidein pods
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+}
+
 // GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet
 type GlideinManagerPilotSetStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+}
+
+// GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet
+type GlideinSetStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
@@ -77,6 +100,27 @@ type GlideinManagerPilotSetList struct {
 	Items           []GlideinManagerPilotSet `json:"items"`
 }
 
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// GlideinManagerPilotSet is the Schema for the glideinmanagerpilotsets API
+type GlideinSet struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   GlideinSetSpec   `json:"spec,omitempty"`
+	Status GlideinSetStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// GlideinManagerPilotSetList contains a list of GlideinManagerPilotSet
+type GlideinSetList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []GlideinSet `json:"items"`
+}
+
 func init() {
-	SchemeBuilder.Register(&GlideinManagerPilotSet{}, &GlideinManagerPilotSetList{})
+	SchemeBuilder.Register(&GlideinManagerPilotSet{}, &GlideinSet{}, &GlideinManagerPilotSetList{}, &GlideinSetList{})
 }

@@ -147,11 +147,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Add GlideinManagerPilotSet controller
 	if err = (&controller.GlideinManagerPilotSetReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GlideinManagerPilotSet")
+		os.Exit(1)
+	}
+
+	// Add GlideinSet controller
+	if err = (&controller.GlideinSetReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "GlideinSet")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
