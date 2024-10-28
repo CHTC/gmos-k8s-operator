@@ -136,7 +136,6 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	}
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 	AddGlideinManagerWatcher(pilotSet, psState)
-	AddCollectorClient(pilotSet, psState)
 	return ctrl.Result{}, nil
 }
 
@@ -176,13 +175,6 @@ func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
 	} else {
 		return false, errors.Join(epErr, glideinErr)
 	}
-}
-
-// Place a new set of ID tokens from the local collector into Secrets in the namespaec
-func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
-	err := ApplyUpdateToResource(pr, RNGlideinTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
-	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
-	return errors.Join(err, err2)
 }
 
 // Update the PilotSet's children based on new data in its Glidein Manager's

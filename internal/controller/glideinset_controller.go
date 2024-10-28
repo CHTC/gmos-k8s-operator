@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -85,8 +86,16 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "Unable to update Deployment for GlideinSet")
 		return ctrl.Result{}, err
 	}
+	AddCollectorClient(glideinSet, glState)
 
 	return ctrl.Result{}, nil
+}
+
+// Place a new set of ID tokens from the local collector into Secrets in the namespaec
+func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
+	err := ApplyUpdateToResource(pr, RNGlideinTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
+	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
+	return errors.Join(err, err2)
 }
 
 func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSet) error {

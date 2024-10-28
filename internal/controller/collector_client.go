@@ -25,7 +25,7 @@ type CollectorUpdateHandler interface {
 
 type CollectorClient struct {
 	ctx               context.Context
-	pilotSet          *gmosv1alpha1.GlideinManagerPilotSet
+	resource          metav1.Object
 	updateHandler     CollectorUpdateHandler
 	tokenUpdateTicker *time.Ticker
 	doneChan          chan (bool)
@@ -55,7 +55,7 @@ func (cc *CollectorClient) StopPolling() {
 
 func (cc *CollectorClient) HandleTokenUpdates() {
 	log := log.FromContext(cc.ctx)
-	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.pilotSet.Namespace))
+	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.resource.GetNamespace()))
 	shouldUpdate, err := cc.updateHandler.ShouldUpdateTokens()
 	if err != nil {
 		log.Error(err, "Unable to determine whether to update tokens")
@@ -65,9 +65,9 @@ func (cc *CollectorClient) HandleTokenUpdates() {
 		return
 	}
 
-	glideinToken, err := execInCollector(cc.ctx, cc.pilotSet, []string{
+	glideinToken, err := execInCollector(cc.ctx, cc.resource, []string{
 		"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"})
-	pilotToken, err2 := execInCollector(cc.ctx, cc.pilotSet,
+	pilotToken, err2 := execInCollector(cc.ctx, cc.resource,
 		[]string{"condor_token_create", "-identity", "pilot@cluster.local", "-key", "NAMESPACE"})
 	if err := errors.Join(err, err2); err != nil {
 		log.Error(err, "Unable to generate new tokens for collector")
@@ -80,10 +80,10 @@ func (cc *CollectorClient) HandleTokenUpdates() {
 
 }
 
-func NewCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler CollectorUpdateHandler) CollectorClient {
+func NewCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) CollectorClient {
 	return CollectorClient{
 		ctx:           context.TODO(),
-		pilotSet:      pilotSet,
+		resource:      resource,
 		updateHandler: updateHandler,
 		doneChan:      make(chan bool),
 	}
@@ -99,7 +99,7 @@ type ExecOutput struct {
 var ErrPodNotRunning = errors.New("pod not in Running state")
 
 // Utility function to run 'condor_token_create' in the Collector pod
-func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, cmd []string) (*ExecOutput, error) {
+func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) (*ExecOutput, error) {
 	log := log.FromContext(ctx)
 	cfg, err := clientConfig.GetConfig()
 	if err != nil {
@@ -112,15 +112,15 @@ func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	}
 
 	// Find the collector pod for the pilotSet based on label selector
-	pods, err := client.CoreV1().Pods(pilotSet.Namespace).List(ctx,
+	pods, err := client.CoreV1().Pods(resource.GetNamespace()).List(ctx,
 		metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("gmos.chtc.wisc.edu/app=collector, app.kubernetes.io/instance=%v", pilotSet.Name),
+			LabelSelector: "gmos.chtc.wisc.edu/app=collector",
 		})
 	if err != nil {
 		return nil, err
 	}
 	if len(pods.Items) != 1 {
-		return nil, fmt.Errorf("expected 1 collector pod for %v, found %v", pilotSet.Name, len(pods.Items))
+		return nil, fmt.Errorf("expected 1 collector pod for %v, found %v", resource.GetName(), len(pods.Items))
 	}
 	pod := pods.Items[0]
 	log.Info(fmt.Sprintf("Found pod with name: %+v", pod.Name))
@@ -130,7 +130,7 @@ func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	}
 
 	// Exec into the pod to run condor_token_create
-	req := client.CoreV1().RESTClient().Post().Namespace(pilotSet.Namespace).
+	req := client.CoreV1().RESTClient().Post().Namespace(resource.GetNamespace()).
 		Resource("pods").Name(pod.Name).SubResource("exec").VersionedParams(&v1.PodExecOptions{
 		Command: cmd,
 		Stdout:  true,
@@ -154,18 +154,20 @@ func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	return &ExecOutput{Stdout: outbuf.String(), Stderr: errbuf.String()}, nil
 }
 
-func AddCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler CollectorUpdateHandler) error {
+func AddCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) error {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	if existingClient, exists := collectorClients[pilotSet.Namespace]; !exists {
-		log.Info(fmt.Sprintf("Creating new collector client for namespace %v", pilotSet.Namespace))
-		newClient := NewCollectorClient(pilotSet, updateHandler)
+	namespacedName := resource.GetName() + resource.GetNamespace()
+
+	if existingClient, exists := collectorClients[namespacedName]; !exists {
+		log.Info(fmt.Sprintf("Creating new collector client for namespaced name %v", namespacedName))
+		newClient := NewCollectorClient(resource, updateHandler)
 		newClient.StartPolling(1 * time.Minute)
-		collectorClients[pilotSet.Namespace] = &newClient
+		collectorClients[resource.GetNamespace()] = &newClient
 	} else {
-		log.Info(fmt.Sprintf("Collector client already exists for namespace %v, updating", pilotSet.Namespace))
-		existingClient.pilotSet = pilotSet
+		log.Info(fmt.Sprintf("Collector client already exists for namespaced name %v, updating", namespacedName))
+		existingClient.resource = resource
 		existingClient.updateHandler = updateHandler
 		return nil
 	}
