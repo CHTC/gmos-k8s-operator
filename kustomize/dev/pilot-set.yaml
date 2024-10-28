@@ -11,7 +11,8 @@ metadata:
 spec:
   glideinManagerUrl: http://gm-file-server-webservice.dev.svc.cluster.local
   glideinSets:
-  - size: 6
+  - name: small
+    size: 6
     priorityClassName: low-priority
     tolerations:
     - key: "foo"

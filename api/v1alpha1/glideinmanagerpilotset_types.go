@@ -40,6 +40,9 @@ type GlideinManagerPilotSetSpec struct {
 
 // Collection of Glideins sharing a priority class, per-pod resource allocation, and node affinity
 type GlideinSetSpec struct {
+	// Name of this glidein deployment
+	Name string `json:"name"`
+
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`
 

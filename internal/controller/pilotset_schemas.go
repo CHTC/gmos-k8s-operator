@@ -13,20 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-// Generic interface for a struct that contains a method which updates the structure of a
-// Kubernetes Resource
-type ResourceUpdater[T client.Object] interface {
-	UpdateResourceValue(Reconciler, T) (bool, error)
-}
-
-// Generic interface for a struct that creates a Kubernetes resource that
-// doesn't yet exist
-type ResourceCreator[T client.Object] interface {
-	SetResourceValue(Reconciler, metav1.Object, T) error
-}
 
 type PilotSetDeploymentCreator struct {
 }
@@ -307,4 +294,21 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r Reconciler, dep *appsv1.De
 	dep.Spec.Template.Spec.SecurityContext.FSGroup = &config.Security.Group
 	dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = &[]bool{config.Security.User != 0}[0]
 	return true, nil
+}
+
+type GlideinSetCreator struct {
+	spec *gmosv1alpha1.GlideinSetSpec
+}
+
+func (gc *GlideinSetCreator) SetResourceValue(
+	r Reconciler, resource metav1.Object, glideinSet *gmosv1alpha1.GlideinSet) error {
+	glideinSet.Spec = *gc.spec
+	return nil
+}
+
+type GlideinSetUpdater struct {
+}
+
+func (du *GlideinSetUpdater) UpdateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
+	return false, nil
 }

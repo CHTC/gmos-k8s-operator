@@ -47,6 +47,9 @@ spec:
                   description: Collection of Glideins sharing a priority class, per-pod
                     resource allocation, and node affinity
                   properties:
+                    name:
+                      description: Name of this glidein deployment
+                      type: string
                     nodeSelector:
                       additionalProperties:
                         type: string
@@ -151,6 +154,8 @@ spec:
                             type: string
                         type: object
                       type: array
+                  required:
+                  - name
                   type: object
                 type: array
             required:

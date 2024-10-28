@@ -20,6 +20,7 @@ import (
 	"context"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -86,6 +87,36 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSet) error {
+	log := log.FromContext(ctx)
+	log.Info("Got new value for GlideinSet custom resource!")
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
+
+	log.Info("Creating Tokens secret if not exists")
+	if err := CreateResourceIfNotExists(psState, RNGlideinTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+		return err
+	}
+
+	// PilotSet
+	log.Info("Creating Data Secret if not exists")
+	if err := CreateResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Access Token Secret if not exists")
+	if err := CreateResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Deployment if not exists")
+	if err := CreateResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{}); err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 // SetupWithManager sets up the controller with the Manager.

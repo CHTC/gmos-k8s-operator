@@ -18,5 +18,5 @@ const (
 )
 
 func (rn ResourceName) NameFor(obj metav1.Object) string {
-	return obj.GetNamespace() + string(rn)
+	return obj.GetName() + string(rn)
 }
