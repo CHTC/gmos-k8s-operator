@@ -74,7 +74,41 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
 	// pilotSet is deleted
 	if !controllerutil.ContainsFinalizer(glideinSet, pilotSetFinalizer) {
-		// TODO!
+		log.Info("Adding finalizer for GlideinManagerPilotSet")
+		if !controllerutil.AddFinalizer(glideinSet, pilotSetFinalizer) {
+			log.Error(nil, "Failed to add finalizer to GlideinSet")
+		}
+
+		if err := r.Update(ctx, glideinSet); err != nil {
+			log.Error(err, "Failed to update GlideinSet to add finalizer")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Check if the pilotSet is marked for deletion, remove its dependent resources if so
+	if glideinSet.GetDeletionTimestamp() != nil {
+		if !controllerutil.ContainsFinalizer(glideinSet, pilotSetFinalizer) {
+			return ctrl.Result{}, nil
+		}
+		log.Info("Running finalizer on GlideinManagerglideinSet before deletion")
+
+		FinalizeGlideinSet(glideinSet)
+
+		// Refresh the Custom Resource post-finalization
+		if err := r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
+			log.Error(err, "Failed to get updated GlideinManagerglideinSet after running finalizer operations")
+			return ctrl.Result{}, err
+		}
+
+		// Remove the finalizer and update the resource
+		if !controllerutil.RemoveFinalizer(glideinSet, pilotSetFinalizer) {
+			log.Error(nil, "Failed to remove finalizer from GlideinManagerglideinSet")
+		}
+		if err := r.Update(ctx, glideinSet); err != nil {
+			log.Error(err, "Failed to update CRD to remove finalizer")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
@@ -86,9 +120,16 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "Unable to update Deployment for GlideinSet")
 		return ctrl.Result{}, err
 	}
-	AddCollectorClient(glideinSet, glState)
 
+	AddGlideinManagerWatcher(glideinSet, glState)
+	AddCollectorClient(glideinSet, glState)
 	return ctrl.Result{}, nil
+}
+
+// Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
+func FinalizeGlideinSet(glideinSet *gmosv1alpha1.GlideinSet) {
+	RemoveGlideinManagerWatcher(glideinSet)
+	RemoveCollectorClient(glideinSet)
 }
 
 // Place a new set of ID tokens from the local collector into Secrets in the namespaec

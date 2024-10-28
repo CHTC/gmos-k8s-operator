@@ -46,6 +46,10 @@ type GlideinSetSpec struct {
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`
 
+	// glideinManagerUrl is the url of the glidein manager from which to pull config for this
+	// set of pilots.
+	GlideinManagerUrl string `json:"glideinManagerUrl,omitempty"`
+
 	// resource requests and limits for glidein pods
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 

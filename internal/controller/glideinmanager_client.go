@@ -20,23 +20,26 @@ type GlideinManagerUpdateHandler interface {
 	ApplySecretUpdate(PilotSetSecretSource, gmosClient.SecretValue) error
 }
 
-type NamespaceSyncState struct {
-	// Last commit to which the namespace was successfully updated
+type ResourceSyncState struct {
+	// Namespace to which the resource belongs
+	namespace string
+
+	// Last commit to which the resource was successfully updated
 	currentCommit string
 
-	// Last secret version to which the namespace was successfully updated
+	// Last secret version to which the resource was successfully updated
 	currentSecretVersion string
 
 	// Struct with functions that apply changes to the Glidein Manager's data
-	// to a namespace
+	// to a resource
 	updateHandler GlideinManagerUpdateHandler
 
-	// Hold the latest config for the namespace from the upstream glidein manager
+	// Hold the latest config for the resource from the upstream glidein manager
 	currentConfig PilotSetNamespaceConfig
 }
 
 type GlideinManagerPoller struct {
-	syncStates       map[string]*NamespaceSyncState
+	syncStates       map[string]*ResourceSyncState
 	client           *gmosClient.GlideinManagerClient
 	dataUpdateTicker *time.Ticker
 	refreshTicker    *time.Ticker
@@ -51,7 +54,7 @@ func NewGlidenManagerPoller(clientName string, managerUrl string) *GlideinManage
 	}
 
 	poller := &GlideinManagerPoller{
-		syncStates: make(map[string]*NamespaceSyncState),
+		syncStates: make(map[string]*ResourceSyncState),
 		client:     client,
 		doneChan:   make(chan bool),
 	}
@@ -90,16 +93,16 @@ func (p *GlideinManagerPoller) StartPolling(pollInterval time.Duration, refreshI
 	}()
 }
 
-func (p *GlideinManagerPoller) HasUpdateHandlerForNamespace(namespace string) bool {
-	_, exists := p.syncStates[namespace]
+func (p *GlideinManagerPoller) HasUpdateHandlerForResource(resource string) bool {
+	_, exists := p.syncStates[resource]
 	return exists
 }
 
-func (p *GlideinManagerPoller) SetUpdateHandler(namespace string, updateHandler GlideinManagerUpdateHandler) {
-	if !p.HasUpdateHandlerForNamespace(namespace) {
-		p.syncStates[namespace] = &NamespaceSyncState{}
+func (p *GlideinManagerPoller) SetUpdateHandler(resource string, namespace string, updateHandler GlideinManagerUpdateHandler) {
+	if !p.HasUpdateHandlerForResource(resource) {
+		p.syncStates[resource] = &ResourceSyncState{namespace: namespace}
 	}
-	p.syncStates[namespace].updateHandler = updateHandler
+	p.syncStates[resource].updateHandler = updateHandler
 }
 
 func (p *GlideinManagerPoller) CheckForGitUpdates() {
@@ -110,11 +113,12 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 		log.Error(err, "Unable to check for git update")
 		return
 	}
-	for namespace, syncState := range p.syncStates {
+	for resource, syncState := range p.syncStates {
+		namespace := syncState.namespace
 		if syncState.currentCommit == repoUpdate.CurrentCommit {
 			continue
 		}
-		log.Info(fmt.Sprintf("Updating namespace %v to commit %v with updater %+v", namespace, repoUpdate.CurrentCommit, syncState))
+		log.Info(fmt.Sprintf("Updating resource %v to commit %v with updater %+v", resource, repoUpdate.CurrentCommit, syncState))
 
 		config, err := readManifestForNamespace(repoUpdate, namespace)
 		if err != nil {
@@ -124,7 +128,7 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 		syncState.currentConfig = config
 
 		if err := syncState.updateHandler.ApplyGitUpdate(repoUpdate); err != nil {
-			log.Error(err, fmt.Sprintf("Error occurred while handling repo update for namespace %v", namespace))
+			log.Error(err, fmt.Sprintf("Error occurred while handling repo update for resource %v", resource))
 		} else {
 			syncState.currentCommit = repoUpdate.CurrentCommit
 		}
@@ -134,7 +138,8 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
-	for namespace, syncState := range p.syncStates {
+	for _, syncState := range p.syncStates {
+		namespace := syncState.namespace
 		secretName := syncState.currentConfig.SecretSource.SecretName
 		secretDst := syncState.currentConfig.SecretSource.Dst
 		// Only check on namespaces with a secret name and config specified
@@ -186,20 +191,21 @@ var activeGlideinManagerPollers = make(map[string]*GlideinManagerPoller)
 // Add a Glidein Manager Watcher for the given Gldiein Manager to the given PilotSet's namespace
 //
 // Should be Idempotent
-func AddGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler GlideinManagerUpdateHandler) error {
+func AddGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler GlideinManagerUpdateHandler) error {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Updating Glidein Manager Watcher for namespace %v", pilotSet.Namespace))
+	log.Info(fmt.Sprintf("Updating Glidein Manager Watcher for namespace %v", glideinSet.Namespace))
 
 	clientName, ok := os.LookupEnv("CLIENT_NAME")
 	if !ok {
 		return errors.New("env var CLIENT_NAME missing")
 	}
 
-	if existingPoller, exists := activeGlideinManagerPollers[pilotSet.Spec.GlideinManagerUrl]; !exists {
-		log.Info(fmt.Sprintf("No existing watchers for manager %v. Creating for namespace %v", pilotSet.Spec.GlideinManagerUrl, pilotSet.Namespace))
-		poller := NewGlidenManagerPoller(clientName, pilotSet.Spec.GlideinManagerUrl)
-		poller.SetUpdateHandler(pilotSet.Namespace, updateHandler)
-		activeGlideinManagerPollers[pilotSet.Spec.GlideinManagerUrl] = poller
+	namespacedName := glideinSet.Namespace + "-" + glideinSet.Name
+	if existingPoller, exists := activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl]; !exists {
+		log.Info(fmt.Sprintf("No existing watchers for manager %v. Creating for namespace %v", glideinSet.Spec.GlideinManagerUrl, glideinSet.Namespace))
+		poller := NewGlidenManagerPoller(clientName, glideinSet.Spec.GlideinManagerUrl)
+		poller.SetUpdateHandler(namespacedName, glideinSet.Namespace, updateHandler)
+		activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl] = poller
 		go func() {
 			if err := poller.DoHandshakeWithRetry(15, 5*time.Second); err != nil {
 				log.Error(err, "Unable to complete handshake with GMOS")
@@ -208,10 +214,10 @@ func AddGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, upd
 			poller.StartPolling(1*time.Minute, 1*time.Hour)
 		}()
 
-	} else if !existingPoller.HasUpdateHandlerForNamespace(pilotSet.Namespace) {
+	} else if !existingPoller.HasUpdateHandlerForResource(namespacedName) {
 		// remove the client from other namespaces
-		RemoveGlideinManagerWatcher(pilotSet)
-		existingPoller.SetUpdateHandler(pilotSet.Namespace, updateHandler)
+		RemoveGlideinManagerWatcher(glideinSet)
+		existingPoller.SetUpdateHandler(namespacedName, glideinSet.Namespace, updateHandler)
 	}
 	return nil
 }
@@ -221,7 +227,7 @@ func MarkNamespaceOutOfSync(namespace string) {
 	log.Info(fmt.Sprintf("Marking namespace %v as out-of-sync", namespace))
 
 	for _, poller := range activeGlideinManagerPollers {
-		if poller.HasUpdateHandlerForNamespace(namespace) {
+		if poller.HasUpdateHandlerForResource(namespace) {
 			poller.syncStates[namespace].currentCommit = ""
 			poller.syncStates[namespace].currentSecretVersion = ""
 			break
@@ -229,14 +235,16 @@ func MarkNamespaceOutOfSync(namespace string) {
 	}
 }
 
-func RemoveGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+func RemoveGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinSet) {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Removing glidein manager watcher from namespace %v", pilotSet.Namespace))
+
+	namespacedName := pilotSet.Namespace + "-" + pilotSet.Name
+	log.Info(fmt.Sprintf("Removing glidein manager watcher from namespaced name %v", namespacedName))
 	var toDelete *GlideinManagerPoller = nil
 	for _, poller := range activeGlideinManagerPollers {
-		if poller.HasUpdateHandlerForNamespace(pilotSet.Namespace) {
+		if poller.HasUpdateHandlerForResource(namespacedName) {
 			log.Info(fmt.Sprintf("consumer removed for manager %v", poller.client.ManagerUrl))
-			delete(poller.syncStates, pilotSet.Namespace)
+			delete(poller.syncStates, namespacedName)
 			if len(poller.syncStates) == 0 {
 				toDelete = poller
 			}

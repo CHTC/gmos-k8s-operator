@@ -36,6 +36,10 @@ spec:
             description: Collection of Glideins sharing a priority class, per-pod
               resource allocation, and node affinity
             properties:
+              glideinManagerUrl:
+                description: glideinManagerUrl is the url of the glidein manager from
+                  which to pull config for this set of pilots.
+                type: string
               name:
                 description: Name of this glidein deployment
                 type: string

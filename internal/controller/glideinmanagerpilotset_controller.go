@@ -134,15 +134,13 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	if err := CreateResourcesForPilotSet(r, ctx, pilotSet); err != nil {
 		return ctrl.Result{}, err
 	}
-	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
-	AddGlideinManagerWatcher(pilotSet, psState)
 	return ctrl.Result{}, nil
 }
 
 // Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
 func FinalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
-	RemoveGlideinManagerWatcher(pilotSet)
-	RemoveCollectorClient(pilotSet)
+	// RemoveGlideinManagerWatcher(pilotSet)
+	// RemoveCollectorClient(pilotSet)
 }
 
 // Struct that captures the state of a PilotSet at the time of Reconciliation.
@@ -237,6 +235,7 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 
 	log.Info("Creating GlideinSet[0] if not exists")
 	glideinSetSpec := pilotSet.Spec.GlideinSets[0]
+	glideinSetSpec.GlideinManagerUrl = pilotSet.Spec.GlideinManagerUrl
 	gsResource := ResourceName("-" + glideinSetSpec.Name)
 	if err := CreateResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, &GlideinSetCreator{spec: &glideinSetSpec}); err != nil {
 		return err

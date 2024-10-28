@@ -14,8 +14,6 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	clientConfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
 type CollectorUpdateHandler interface {
@@ -175,12 +173,12 @@ func AddCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHan
 	return nil
 }
 
-func RemoveCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+func RemoveCollectorClient(resource metav1.Object) {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	if existingClient, exists := collectorClients[pilotSet.Namespace]; exists {
-		log.Info(fmt.Sprintf("Removing collector client for namespace %v", pilotSet.Namespace))
+	if existingClient, exists := collectorClients[resource.GetNamespace()]; exists {
+		log.Info(fmt.Sprintf("Removing collector client for namespace %v", resource.GetNamespace()))
 		existingClient.StopPolling()
 	}
 }
