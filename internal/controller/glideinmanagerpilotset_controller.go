@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -79,7 +80,6 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	log := log.FromContext(ctx)
 	log.Info("Running reconcile")
 
-	// Check the namespace for a PilotSet CRD,
 	pilotSet := &gmosv1alpha1.GlideinManagerPilotSet{}
 
 	if err := r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
@@ -233,12 +233,56 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 		return err
 	}
 
-	log.Info("Creating GlideinSet[0] if not exists")
-	glideinSetSpec := pilotSet.Spec.GlideinSets[0]
-	glideinSetSpec.GlideinManagerUrl = pilotSet.Spec.GlideinManagerUrl
-	gsResource := ResourceName("-" + glideinSetSpec.Name)
-	if err := CreateResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, &GlideinSetCreator{spec: &glideinSetSpec}); err != nil {
+	log.Info("Updating GlideinSets")
+	if err := recoincileGlideinSets(pilotSet, psState); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// Create any GlideinSets in the spec that don't exist yet, update ones that already exist,
+// and delete ones that don't exist
+func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psState *PilotSetReconcileState) error {
+	log := log.FromContext(psState.ctx)
+	// Create/update all present GlideinSets
+	for _, glideinSetSpec := range pilotSet.Spec.GlideinSets {
+		glideinSetSpec.GlideinManagerUrl = pilotSet.Spec.GlideinManagerUrl
+		gsResource := ResourceName("-" + glideinSetSpec.Name)
+		// TODO this double dips API calls by checking for existence on update then checking again on create
+		creator := &GlideinSetCreator{spec: &glideinSetSpec}
+		err := ApplyUpdateToResource(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator)
+		if apierrors.IsNotFound(err) {
+			if err := CreateResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Remove stale GlideinSets
+	// TODO
+	glideinSetList := gmosv1alpha1.GlideinSetList{}
+	psState.reconciler.GetClient().List(
+		psState.ctx, &glideinSetList,
+		client.InNamespace(pilotSet.Namespace), client.HasLabels([]string{"app.kubernetes.io/instance=" + pilotSet.Name}))
+
+	for _, glideinSet := range glideinSetList.Items {
+		log.Info(fmt.Sprintf("Found GlideinSet with name %v via API call!", glideinSet.Name))
+		outdated := true
+		for _, currentSet := range pilotSet.Spec.GlideinSets {
+			if glideinSet.Name == pilotSet.Name+"-"+currentSet.Name {
+				outdated = false
+				break
+			}
+		}
+
+		if outdated {
+			log.Info(fmt.Sprintf("GlideinSet %v has been removed, deleting it.", glideinSet.Name))
+			if err := psState.reconciler.GetClient().Delete(psState.ctx, &glideinSet); err != nil {
+				log.Error(err, "Unable to delete stale GlideinSet")
+				return err
+			}
+		}
 	}
 
 	return nil

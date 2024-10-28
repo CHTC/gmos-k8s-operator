@@ -302,13 +302,13 @@ type GlideinSetCreator struct {
 
 func (gc *GlideinSetCreator) SetResourceValue(
 	r Reconciler, resource metav1.Object, glideinSet *gmosv1alpha1.GlideinSet) error {
+	labelsMap := labelsForPilotSet(resource.GetName())
+	glideinSet.ObjectMeta.Labels = labelsMap
 	glideinSet.Spec = *gc.spec
 	return nil
 }
 
-type GlideinSetUpdater struct {
-}
-
-func (du *GlideinSetUpdater) UpdateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
+func (gu *GlideinSetCreator) UpdateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
+	glideinSet.Spec = *gu.spec
 	return false, nil
 }
