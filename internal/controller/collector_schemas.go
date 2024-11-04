@@ -11,6 +11,7 @@ import (
 
 // Schema entries for the collector
 
+// ResourceCreator implementation that creates a Secret containing a token signing key for a Collector
 type CollectorSigningKeyCreator struct {
 }
 
@@ -27,6 +28,8 @@ func (cc *CollectorSigningKeyCreator) SetResourceValue(
 	return nil
 }
 
+// ResourceCreator implementation that creates a ConfigMap containing fixed config.d config file
+// contents for a Collector
 type CollectorConfigMapCreator struct {
 }
 
@@ -38,6 +41,10 @@ func (du *CollectorConfigMapCreator) SetResourceValue(
 	return nil
 }
 
+// ResourceCreator implementation that creates a new Deployment running a collector, with
+// appropriate VolumeMounts for its signing key Secret and config.d ConfigMap.
+// Also contains an initContainer that modifies the signing key's file permissions, as
+// the default required by the Collector (0600) is not possible directly via VolumeMounts
 type CollectorDeploymentCreator struct {
 }
 
@@ -115,6 +122,8 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 	return nil
 }
 
+// ResourceCreator implemetation that creates a Service pointing at
+// port 9618 on the Collector
 type CollectorServiceCreator struct {
 }
 

@@ -46,15 +46,8 @@ func (r *GlideinSetReconciler) GetScheme() *runtime.Scheme {
 	return r.Scheme
 }
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the GlideinSet object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
+// Reconcile the state of a GlideinSet Custom Resource in the namespace by updating
+// its associated child resources
 func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("Running reconcile")
@@ -126,30 +119,36 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-// Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
+// Remove the GlideinManager client and Collector client for the namespace when the associated GlideinSet
+// custom resource is deleted
 func FinalizeGlideinSet(glideinSet *gmosv1alpha1.GlideinSet) {
 	RemoveGlideinManagerWatcher(glideinSet)
 	RemoveCollectorClient(glideinSet)
 }
 
-// Place a new set of ID tokens from the local collector into Secrets in the namespaec
+// Place a new set of auth tokens from the local collector into Secrets in the namespace
+// A separate set of tokens are generated for the Glidein itself and the EP in the glidein
 func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
-	err := ApplyUpdateToResource(pr, RNGlideinTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
+	err := ApplyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
 	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
 	return errors.Join(err, err2)
 }
 
+// Create the set of resources associated with a single Glidein deployment
+// - Secret containing access tokens from the local Collector
+// - Secret containing data files from the upstream Git repo
+// - Secret containing external Collector access tokens provided by the Glidein Manager
+// - Empty deployment with volume mounts for the above secrets
 func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for GlideinSet custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
-	log.Info("Creating Tokens secret if not exists")
-	if err := CreateResourceIfNotExists(psState, RNGlideinTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	log.Info("Creating Collector tokens secret if not exists")
+	if err := CreateResourceIfNotExists(psState, RNCollectorTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
-	// PilotSet
 	log.Info("Creating Data Secret if not exists")
 	if err := CreateResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err

@@ -9,7 +9,7 @@ type ResourceName string
 
 const (
 	RNBase            ResourceName = ""
-	RNGlideinTokens   ResourceName = "-collector-tokens"
+	RNCollectorTokens ResourceName = "-collector-tokens"
 	RNData            ResourceName = "-data"
 	RNTokens          ResourceName = "-tokens"
 	RNCollector       ResourceName = "-collector"
@@ -17,6 +17,8 @@ const (
 	RNCollectorConfig ResourceName = "-collector-cfg"
 )
 
+// Util function to prefix a resource name with the name of
+// its parent
 func (rn ResourceName) NameFor(obj metav1.Object) string {
 	return obj.GetName() + string(rn)
 }

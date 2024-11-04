@@ -15,9 +15,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
+// ResourceCreator implementation that creates the Deployment that holds a set of Glidein pods
 type PilotSetDeploymentCreator struct {
 }
 
+// Set the Spec for a deployment to contain a single "sleep" container with volumes and mounts
+// for a set of config files
 func (*PilotSetDeploymentCreator) SetResourceValue(
 	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
@@ -79,7 +82,7 @@ func (*PilotSetDeploymentCreator) SetResourceValue(
 					Name: "collector-tokens",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNGlideinTokens.NameFor(resource),
+							SecretName: RNCollectorTokens.NameFor(resource),
 						},
 					},
 				},

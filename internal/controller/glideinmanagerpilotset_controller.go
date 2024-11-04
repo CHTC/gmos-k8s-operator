@@ -157,7 +157,7 @@ type PilotSetReconcileState struct {
 func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
 	glideinSec := corev1.Secret{}
 	epSec := corev1.Secret{}
-	glideinErr := pr.reconciler.GetClient().Get(pr.ctx, types.NamespacedName{Name: RNGlideinTokens.NameFor(pr.resource), Namespace: pr.resource.GetNamespace()}, &glideinSec)
+	glideinErr := pr.reconciler.GetClient().Get(pr.ctx, types.NamespacedName{Name: RNCollectorTokens.NameFor(pr.resource), Namespace: pr.resource.GetNamespace()}, &glideinSec)
 	epErr := pr.reconciler.GetClient().Get(pr.ctx, types.NamespacedName{Name: RNTokens.NameFor(pr.resource), Namespace: pr.resource.GetNamespace()}, &epSec)
 	if epErr == nil && glideinErr == nil {
 		// TODO check token expiration. For now just check whether secret is populated
@@ -173,6 +173,11 @@ func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
 	} else {
 		return false, errors.Join(epErr, glideinErr)
 	}
+}
+
+// Return whether an error is "recoverable" - either nil or not found
+func updateErrOk(err error) bool {
+	return err == nil || apierrors.IsNotFound(err)
 }
 
 // Update the PilotSet's children based on new data in its Glidein Manager's
@@ -199,7 +204,7 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 	return nil
 }
 
-// Update the PilotSet's children based on new data in its Glidein Manager's
+// Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
 // secret store
 func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
@@ -207,9 +212,15 @@ func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource PilotSetSecretSour
 	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
 }
 
+// Create the base set of resources for a GlideinManagerPilotSet:
+// - A Secret containing the signing key for the Collector's tokens
+// - A ConfigMap containing config.d files for the Collector
+// - A Deployment hosting a single replica of a Collector pod
+// - A Service for TCP on port 9618 on the Collecor
+// Also, create or update the set of GlideinSets associated with the Collector
 func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
 	log := log.FromContext(ctx)
-	log.Info("Got new value for PilotSet custom resource!")
+	log.Info("Got new value for GlideinManagerPilotSet custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
 	// Collector resources
@@ -241,8 +252,11 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 	return nil
 }
 
-// Create any GlideinSets in the spec that don't exist yet, update ones that already exist,
-// and delete ones that don't exist
+// Reconcile the collection of GlideinSets in the namespace with the `spec.GlideinSets` field
+// in the GlideinManagerPilotSet
+// - Create any GlideinSets in the spec that don't exist yet
+// - Update the Spec of any GlideinSet that already exists and has been changed
+// - Delete GlideinSets that are no longer included in the list
 func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psState *PilotSetReconcileState) error {
 	log := log.FromContext(psState.ctx)
 	// Create/update all present GlideinSets
@@ -260,7 +274,6 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 	}
 
 	// Remove stale GlideinSets
-	// TODO
 	glideinSetList := gmosv1alpha1.GlideinSetList{}
 	psState.reconciler.GetClient().List(
 		psState.ctx, &glideinSetList,
@@ -286,10 +299,6 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 	}
 
 	return nil
-}
-
-func updateErrOk(err error) bool {
-	return err == nil || apierrors.IsNotFound(err)
 }
 
 // SetupWithManager sets up the controller with the Manager.

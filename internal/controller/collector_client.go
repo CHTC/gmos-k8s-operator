@@ -1,3 +1,7 @@
+// Set of data structures for attaching a "collector poller" to a PilotSet
+// resource that polls the collector at a regular interval and updates
+// the PilotSet's credentials secret with new credentials from the Collector
+
 package controller
 
 import (
@@ -16,11 +20,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// Interface for a struct that handles receiving auth tokens from a Collector
 type CollectorUpdateHandler interface {
+	// Check whether the current set of tokens held by the client have expired
 	ShouldUpdateTokens() (bool, error)
+
+	// Update the kubernetes resources managed by the client with a new auth token
 	ApplyTokensUpdate(string, string) error
 }
 
+// Helper struct that polls a Collector on an interval and passes updated credentials
+// into a CollectorUpdateHandler implementation
 type CollectorClient struct {
 	ctx               context.Context
 	resource          metav1.Object
@@ -29,6 +39,7 @@ type CollectorClient struct {
 	doneChan          chan (bool)
 }
 
+// Start polling a collector with the given internval
 func (cc *CollectorClient) StartPolling(interval time.Duration) {
 	if cc.tokenUpdateTicker != nil {
 		return
@@ -47,10 +58,15 @@ func (cc *CollectorClient) StartPolling(interval time.Duration) {
 	}()
 }
 
+// Stop polling the collector
 func (cc *CollectorClient) StopPolling() {
 	cc.doneChan <- true
 }
 
+// Main credential update loop:
+// - Check whether the existing set of credentials have expired
+// - Exec into the collector to generate a new set of credentials if needed
+// - Update the Secret(s) that store the credentials
 func (cc *CollectorClient) HandleTokenUpdates() {
 	log := log.FromContext(cc.ctx)
 	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.resource.GetNamespace()))
@@ -87,6 +103,8 @@ func NewCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHan
 	}
 }
 
+// Static map active CollectorClients. Map from namespaced name of client resource
+// to its CollectorClient struct
 var collectorClients = make(map[string]*CollectorClient)
 
 type ExecOutput struct {
@@ -152,6 +170,8 @@ func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) 
 	return &ExecOutput{Stdout: outbuf.String(), Stderr: errbuf.String()}, nil
 }
 
+// Register a new CollectorUpdateHandler with the Collector associated with the
+// given resource
 func AddCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) error {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
@@ -173,12 +193,15 @@ func AddCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHan
 	return nil
 }
 
+// Remove the watcher associated with the given resource
 func RemoveCollectorClient(resource metav1.Object) {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	if existingClient, exists := collectorClients[resource.GetNamespace()]; exists {
-		log.Info(fmt.Sprintf("Removing collector client for namespace %v", resource.GetNamespace()))
+	namespacedName := resource.GetName() + resource.GetNamespace()
+
+	if existingClient, exists := collectorClients[namespacedName]; exists {
+		log.Info(fmt.Sprintf("Removing collector client for namespaced name %v", namespacedName))
 		existingClient.StopPolling()
 	}
 }
