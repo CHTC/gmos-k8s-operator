@@ -180,33 +180,9 @@ func updateErrOk(err error) bool {
 	return err == nil || apierrors.IsNotFound(err)
 }
 
-// Update the PilotSet's children based on new data in its Glidein Manager's
-// git repository
-func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(pr.ctx)
-	log.Info("Got repo update!")
-
-	log.Info("Updating data Secret")
-	if err := ApplyUpdateToResource(pr, RNData, &corev1.Secret{}, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
-
-	// log.Info("Updating access token Secret")
-	// if err := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-	// 	return err
-	// }
-
-	log.Info("Updating Deployment")
-	if err := ApplyUpdateToResource(pr, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
-
-	return nil
-}
-
 // Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
 // secret store
-func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource PilotSetSecretSource, sv gmosClient.SecretValue) error {
+func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
 	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
@@ -270,6 +246,8 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 			if err := CreateResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator); err != nil {
 				return err
 			}
+		} else if err != nil {
+			return err
 		}
 	}
 

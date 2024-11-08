@@ -114,22 +114,22 @@ func labelsForPilotSet(name string) map[string]string {
 	}
 }
 
-func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string) (PilotSetNamespaceConfig, error) {
-	manifest := PilotSetManifiest{}
+func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string) (gmosv1alpha1.PilotSetNamespaceConfig, error) {
+	manifest := &PilotSetManifiest{}
 	data, err := os.ReadFile(filepath.Join(gitUpdate.Path, "glidein-manifest.yaml"))
 	if err != nil {
-		return PilotSetNamespaceConfig{}, err
+		return gmosv1alpha1.PilotSetNamespaceConfig{}, err
 	}
 
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		return PilotSetNamespaceConfig{}, err
+	if err := yaml.Unmarshal(data, manifest); err != nil {
+		return gmosv1alpha1.PilotSetNamespaceConfig{}, err
 	}
 	for _, config := range manifest.Manifests {
 		if config.Namespace == namespace {
 			return config, nil
 		}
 	}
-	return PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
+	return gmosv1alpha1.PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
 }
 
 // ResourceUpdater implementation that updates a Deployment based on changes
@@ -152,17 +152,14 @@ func (du *DeploymentPilotSetUpdater) UpdateResourceValue(r Reconciler, dep *apps
 // ResourceUpdater implementation that updates a Secret's data based on the
 // updated contents of config files in Git
 type DataSecretGitUpdater struct {
-	gitUpdate *gmosClient.RepoUpdate
+	manifest *gmosv1alpha1.PilotSetNamespaceConfig
 }
 
 func (du *DataSecretGitUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
-	config, err := readManifestForNamespace(*du.gitUpdate, sec.Namespace)
-	if err != nil {
-		return false, err
-	}
+	manifest := du.manifest
 
-	listing, err := os.ReadDir(filepath.Join(du.gitUpdate.Path, config.Volume.Src))
+	listing, err := os.ReadDir(filepath.Join(manifest.RepoPath, manifest.Volume.Src))
 	if err != nil {
 		return false, err
 	}
@@ -172,7 +169,7 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Se
 		if entry.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(du.gitUpdate.Path, config.Volume.Src, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(manifest.RepoPath, manifest.Volume.Src, entry.Name()))
 		if err != nil {
 			return false, err
 		}
@@ -186,7 +183,7 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Se
 // ResourceUpdater implementation that updates a Secret's value based on the
 // updated contents of a Secret in the glidein manager
 type TokenSecretValueUpdater struct {
-	secSource *PilotSetSecretSource
+	secSource *gmosv1alpha1.PilotSetSecretSource
 	secValue  *gmosClient.SecretValue
 }
 
@@ -216,7 +213,7 @@ func (du *TokenSecretValueUpdater) UpdateResourceValue(r Reconciler, sec *corev1
 // ResourceUpdater implementation that updates a Deployment based on the
 // updated contents of a manifest file in Git
 type DeploymentGitUpdater struct {
-	gitUpdate *gmosClient.RepoUpdate
+	manifest *gmosv1alpha1.PilotSetNamespaceConfig
 }
 
 // Helper function to check that a pointer is both non nil and equal to a value
@@ -227,7 +224,7 @@ func nilSafeEq[T comparable](a *T, b T) bool {
 // Check field-for-field whether the deployment state described in the latest version
 // of the glidein manager config differs from the current state of the deployment.
 // TODO there is probably a more efficient way to do this
-func deploymentWasUpdated(dep *appsv1.Deployment, config PilotSetNamespaceConfig) bool {
+func deploymentWasUpdated(dep *appsv1.Deployment, config *gmosv1alpha1.PilotSetNamespaceConfig) bool {
 	// TODO there are a lot of places where we could dereference a null pointer here...
 	container := dep.Spec.Template.Spec.Containers[0]
 	securityCtx := dep.Spec.Template.Spec.SecurityContext
@@ -257,45 +254,42 @@ func deploymentWasUpdated(dep *appsv1.Deployment, config PilotSetNamespaceConfig
 }
 
 func (du *DeploymentGitUpdater) UpdateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
-	dep.Spec.Template.ObjectMeta.Labels["gmos.chtc.wisc.edu/git-hash"] = du.gitUpdate.CurrentCommit
+	dep.Spec.Template.ObjectMeta.Labels["gmos.chtc.wisc.edu/git-hash"] = du.manifest.CurrentCommit
 	// update a label on the deployment
-	config, err := readManifestForNamespace(*du.gitUpdate, dep.Namespace)
-	if err != nil {
-		return false, err
-	}
+	manifest := du.manifest
 
-	if !deploymentWasUpdated(dep, config) {
+	if !deploymentWasUpdated(dep, manifest) {
 		return false, nil
 	}
 
 	// Launch parameters
-	dep.Spec.Template.Spec.Containers[0].Image = config.Image
-	dep.Spec.Template.Spec.Containers[0].Command = config.Command
+	dep.Spec.Template.Spec.Containers[0].Image = manifest.Image
+	dep.Spec.Template.Spec.Containers[0].Command = manifest.Command
 
 	// Data mount parameters
-	if config.Volume.Src != "" && config.Volume.Dst != "" {
-		dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = config.Volume.Dst
+	if manifest.Volume.Src != "" && manifest.Volume.Dst != "" {
+		dep.Spec.Template.Spec.Containers[0].VolumeMounts[0].MountPath = manifest.Volume.Dst
 	}
 
 	// Token mount parameters
-	if config.SecretSource.SecretName != "" && config.SecretSource.Dst != "" {
-		tokenDir, _ := path.Split(config.SecretSource.Dst)
+	if manifest.SecretSource.SecretName != "" && manifest.SecretSource.Dst != "" {
+		tokenDir, _ := path.Split(manifest.SecretSource.Dst)
 		dep.Spec.Template.Spec.Containers[0].VolumeMounts[1].MountPath = tokenDir
 	}
 
 	// Environment variables
-	newEnv := make([]corev1.EnvVar, len(config.Env)+1)
-	for i, val := range config.Env {
+	newEnv := make([]corev1.EnvVar, len(manifest.Env)+1)
+	for i, val := range manifest.Env {
 		newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
 	}
-	newEnv[len(config.Env)] = corev1.EnvVar{Name: "LOCAL_POOL", Value: fmt.Sprintf("%s%s.%s.svc.cluster.local", dep.Name, RNCollector, dep.Namespace)}
+	newEnv[len(manifest.Env)] = corev1.EnvVar{Name: "LOCAL_POOL", Value: fmt.Sprintf("%s%s.%s.svc.cluster.local", dep.Name, RNCollector, dep.Namespace)}
 	dep.Spec.Template.Spec.Containers[0].Env = newEnv
 
 	// Security context parameters
-	dep.Spec.Template.Spec.SecurityContext.RunAsUser = &config.Security.User
-	dep.Spec.Template.Spec.SecurityContext.RunAsGroup = &config.Security.Group
-	dep.Spec.Template.Spec.SecurityContext.FSGroup = &config.Security.Group
-	dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = &[]bool{config.Security.User != 0}[0]
+	dep.Spec.Template.Spec.SecurityContext.RunAsUser = &manifest.Security.User
+	dep.Spec.Template.Spec.SecurityContext.RunAsGroup = &manifest.Security.Group
+	dep.Spec.Template.Spec.SecurityContext.FSGroup = &manifest.Security.Group
+	dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = &[]bool{manifest.Security.User != 0}[0]
 	return true, nil
 }
 
@@ -313,5 +307,25 @@ func (gc *GlideinSetCreator) SetResourceValue(
 
 func (gu *GlideinSetCreator) UpdateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
 	glideinSet.Spec = *gu.spec
+	return true, nil
+}
+
+// ResourceUpdater implementation that updates a GlideinSet based on the
+// updated contents of a manifest file in Git
+type GlideinSetGitUpdater struct {
+	gitUpdate *gmosClient.RepoUpdate
+}
+
+func (gu *GlideinSetGitUpdater) UpdateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
+	config, err := readManifestForNamespace(*gu.gitUpdate, glideinSet.Namespace)
+	if err != nil {
+		return false, err
+	}
+	glideinSet.RemoteManifest = &config
+
+	glideinSet.RemoteManifest.RepoPath = gu.gitUpdate.Path
+	glideinSet.RemoteManifest.CurrentCommit = gu.gitUpdate.CurrentCommit
+	glideinSet.RemoteManifest.PreviousCommit = gu.gitUpdate.PreviousCommit
+
 	return true, nil
 }
