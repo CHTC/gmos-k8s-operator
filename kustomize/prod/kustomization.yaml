@@ -1,5 +1,8 @@
 namespace: prod
 
+bases:
+  - ../base/operator-role
+
 resources:
   - namespace.yaml
   - pilot-set.yaml

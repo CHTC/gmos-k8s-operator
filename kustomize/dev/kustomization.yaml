@@ -2,6 +2,7 @@ namespace: dev
 
 bases:
   - ../base/gmos
+  - ../base/operator-role
 
 resources:
   - namespace.yaml
