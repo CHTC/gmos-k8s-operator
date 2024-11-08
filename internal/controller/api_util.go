@@ -45,7 +45,7 @@ func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 			log.Error(err, "Unable to create resource")
 			return err
 		}
-		MarkNamespaceOutOfSync(reconcileState.resource.GetNamespace())
+		MarkResourceOutOfSync(NamespacedNameFor(reconcileState.resource))
 		return nil
 	} else {
 		log.Error(err, "Unable to get resource")
@@ -61,22 +61,23 @@ func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, resourceUpdater ResourceUpdater[T]) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.NameFor(reconcileState.resource)
+	log.Info("Applying updates to resource " + name)
 	if err := reconcileState.reconciler.GetClient().Get(
 		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()}, resource); err == nil {
 		updated, err := resourceUpdater.UpdateResourceValue(reconcileState.reconciler, resource)
 		if err != nil {
-			log.Error(err, "Unable to apply update to resource value")
+			log.Error(err, "Unable to apply update to resource value: "+name)
 			return err
 		}
 		if !updated {
-			log.Info("No updates needed for resource")
+			log.Info("No updates needed for resource " + name)
 			return nil
 		}
 		if err := reconcileState.reconciler.GetClient().Update(reconcileState.ctx, resource); err != nil {
-			log.Error(err, "Unable to post update to resource")
+			log.Error(err, "Unable to post update to resource "+name)
 			return err
 		}
-		log.Info("Resource updated successfully")
+		log.Info("Resource updated successfully: " + name)
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, must have been deleted or not created")
 		return err

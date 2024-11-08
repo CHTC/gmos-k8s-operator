@@ -129,6 +129,7 @@ func FinalizeGlideinSet(glideinSet *gmosv1alpha1.GlideinSet) {
 // Place a new set of auth tokens from the local collector into Secrets in the namespace
 // A separate set of tokens are generated for the Glidein itself and the EP in the glidein
 func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
+	// TODO this occassionally results in the error "the object has been modified; please apply your changes to the latest version and try again"
 	err := ApplyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
 	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
 	return errors.Join(err, err2)

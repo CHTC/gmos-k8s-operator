@@ -176,7 +176,7 @@ func AddCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHan
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	namespacedName := resource.GetName() + resource.GetNamespace()
+	namespacedName := NamespacedNameFor(resource)
 
 	if existingClient, exists := collectorClients[namespacedName]; !exists {
 		log.Info(fmt.Sprintf("Creating new collector client for namespaced name %v", namespacedName))
@@ -198,7 +198,7 @@ func RemoveCollectorClient(resource metav1.Object) {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	namespacedName := resource.GetName() + resource.GetNamespace()
+	namespacedName := NamespacedNameFor(resource)
 
 	if existingClient, exists := collectorClients[namespacedName]; exists {
 		log.Info(fmt.Sprintf("Removing collector client for namespaced name %v", namespacedName))

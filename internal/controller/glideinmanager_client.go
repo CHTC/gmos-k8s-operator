@@ -226,7 +226,7 @@ func AddGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 		return errors.New("env var CLIENT_NAME missing")
 	}
 
-	namespacedName := glideinSet.Namespace + "-" + glideinSet.Name
+	namespacedName := NamespacedNameFor(glideinSet)
 	if existingPoller, exists := activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl]; !exists {
 		log.Info(fmt.Sprintf("No existing watchers for manager %v. Creating for namespace %v", glideinSet.Spec.GlideinManagerUrl, glideinSet.Namespace))
 		poller := NewGlidenManagerPoller(clientName, glideinSet.Spec.GlideinManagerUrl)
@@ -250,14 +250,14 @@ func AddGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 
 // Utility function to mark a resource out of sync with Git whenever it's directly updated
 // via changes to its parent CRD
-func MarkNamespaceOutOfSync(namespace string) {
+func MarkResourceOutOfSync(namespacedName string) {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Marking namespace %v as out-of-sync", namespace))
+	log.Info(fmt.Sprintf("Marking resource %v as out-of-sync", namespacedName))
 
 	for _, poller := range activeGlideinManagerPollers {
-		if poller.HasUpdateHandlerForResource(namespace) {
-			poller.syncStates[namespace].currentCommit = ""
-			poller.syncStates[namespace].currentSecretVersion = ""
+		if poller.HasUpdateHandlerForResource(namespacedName) {
+			poller.syncStates[namespacedName].currentCommit = ""
+			poller.syncStates[namespacedName].currentSecretVersion = ""
 			break
 		}
 	}
@@ -265,10 +265,10 @@ func MarkNamespaceOutOfSync(namespace string) {
 
 // Remove the Glidein Manager watcher for a single GlideinSet resource. If no watchers are
 // remaining for the Git repo after the removal, remove the poller as well.
-func RemoveGlideinManagerWatcher(pilotSet *gmosv1alpha1.GlideinSet) {
+func RemoveGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
 	log := log.FromContext(context.TODO())
 
-	namespacedName := pilotSet.Namespace + "-" + pilotSet.Name
+	namespacedName := NamespacedNameFor(glideinSet)
 	log.Info(fmt.Sprintf("Removing glidein manager watcher from namespaced name %v", namespacedName))
 	var toDelete *GlideinManagerPoller = nil
 	for _, poller := range activeGlideinManagerPollers {
