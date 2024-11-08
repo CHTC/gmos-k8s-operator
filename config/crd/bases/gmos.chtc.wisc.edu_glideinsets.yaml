@@ -32,9 +32,82 @@ spec:
             type: string
           metadata:
             type: object
+          remoteManifest:
+            properties:
+              command:
+                items:
+                  type: string
+                type: array
+              currentCommit:
+                type: string
+              env:
+                items:
+                  description: Config for a key/value pair that should be placed into
+                    the Glidein's environment
+                  properties:
+                    name:
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  - value
+                  type: object
+                type: array
+              image:
+                type: string
+              namespace:
+                type: string
+              path:
+                description: TODO a bit odd to include a couple k8s only fields here
+                type: string
+              previousCommit:
+                type: string
+              secretSource:
+                description: Config for which secret on the Glidein Manager that should
+                  be mounted as a file into the Glidein
+                properties:
+                  dst:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - dst
+                - secretName
+                type: object
+              security:
+                description: Config for the user and group that the Glidein container
+                  should run as
+                properties:
+                  group:
+                    format: int64
+                    type: integer
+                  user:
+                    format: int64
+                    type: integer
+                required:
+                - group
+                - user
+                type: object
+              volume:
+                description: Config for which subdirectory of the git repo should
+                  be converted into a ConfigMap and volume mounted into the Glidein
+                properties:
+                  dst:
+                    type: string
+                  src:
+                    type: string
+                required:
+                - dst
+                - src
+                type: object
+            required:
+            - currentCommit
+            - image
+            - path
+            type: object
           spec:
-            description: Collection of Glideins sharing a priority class, per-pod
-              resource allocation, and node affinity
+            description: Spec for the GlideinSet as determined by its
             properties:
               glideinManagerUrl:
                 description: glideinManagerUrl is the url of the glidein manager from

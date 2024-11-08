@@ -104,8 +104,10 @@ type GlideinSet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   GlideinSetSpec   `json:"spec,omitempty"`
-	Status GlideinSetStatus `json:"status,omitempty"`
+	// Spec for the GlideinSet as determined by its
+	Spec           GlideinSetSpec           `json:"spec,omitempty"`
+	RemoteManifest *PilotSetNamespaceConfig `json:"remoteManifest,omitempty"`
+	Status         GlideinSetStatus         `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -21,7 +21,7 @@ type GlideinManagerUpdateHandler interface {
 	ApplyGitUpdate(gmosClient.RepoUpdate) error
 
 	// Update the resources in a namespace based on new data in the Glidein Manager's secret store
-	ApplySecretUpdate(PilotSetSecretSource, gmosClient.SecretValue) error
+	ApplySecretUpdate(gmosv1alpha1.PilotSetSecretSource, gmosClient.SecretValue) error
 }
 
 // Struct tracking the sync state of a (set of) K8s resources with the Git config
@@ -41,7 +41,7 @@ type ResourceSyncState struct {
 	updateHandler GlideinManagerUpdateHandler
 
 	// Hold the latest config for the resource from the upstream glidein manager
-	currentConfig PilotSetNamespaceConfig
+	currentConfig gmosv1alpha1.PilotSetNamespaceConfig
 }
 
 // Helper struct that polls a Glidein Manager Git repo on an interval and passes updated config
