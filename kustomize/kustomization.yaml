@@ -1,4 +1,4 @@
 resources:
   - dev
-  - prod
+#  - prod
   - operator

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -47,7 +48,9 @@ type GlideinManagerPilotSetReconciler struct {
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=apps,namespace=memcached-operator-system,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=pods,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=pods/exec,verbs=create
 //+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,namespace=memcached-operator-system,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -118,20 +121,20 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 	if err := CreateResourcesForPilotSet(r, ctx, pilotSet); err != nil {
 		return ctrl.Result{}, err
 	}
-	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(&PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet},
-		pilotSet.Name, dep, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
+	if err := ApplyUpdateToResource(psState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{pilotSet: pilotSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for PilotSet")
 		return ctrl.Result{}, err
 	}
-	updater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
-	AddGlideinManagerWatcher(pilotSet, updater)
+	AddGlideinManagerWatcher(pilotSet, psState)
+	AddCollectorClient(pilotSet, psState)
 	return ctrl.Result{}, nil
 }
 
 // Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
 func FinalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
 	RemoveGlideinManagerWatcher(pilotSet)
+	RemoveCollectorClient(pilotSet)
 }
 
 // Struct that captures the state of a PilotSet at the time of Reconciliation.
@@ -143,6 +146,36 @@ type PilotSetReconcileState struct {
 	reconciler *GlideinManagerPilotSetReconciler
 }
 
+// Check the current state of resources in the PilotSet's namespace to determine
+// whether a new set of ID tokens need to be generated via the local collector
+func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
+	glideinSec := corev1.Secret{}
+	epSec := corev1.Secret{}
+	glideinErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: RNGlideinTokens.NameFor(pr.pilotSet), Namespace: pr.pilotSet.Namespace}, &glideinSec)
+	epErr := pr.reconciler.Get(pr.ctx, types.NamespacedName{Name: RNTokens.NameFor(pr.pilotSet), Namespace: pr.pilotSet.Namespace}, &epSec)
+	if epErr == nil && glideinErr == nil {
+		// TODO check token expiration. For now just check whether secret is populated
+		for _, sec := range []corev1.Secret{glideinSec, epSec} {
+			if _, exists := sec.Data["cluster.tkn"]; !exists {
+				return true, nil
+			}
+		}
+		return false, nil
+	} else if apierrors.IsNotFound(glideinErr) && apierrors.IsNotFound(epErr) {
+		// Need to wait for resources to be recreated in next reconcile loop
+		return false, nil
+	} else {
+		return false, errors.Join(epErr, glideinErr)
+	}
+}
+
+// Place a new set of ID tokens from the local collector into Secrets in the namespaec
+func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
+	err := ApplyUpdateToResource(pr, RNGlideinTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
+	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
+	return errors.Join(err, err2)
+}
+
 // Update the PilotSet's children based on new data in its Glidein Manager's
 // git repository
 func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
@@ -150,21 +183,17 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 	log.Info("Got repo update!")
 
 	log.Info("Updating data Secret")
-	sec := &corev1.Secret{}
-	baseName := pr.pilotSet.Name
-	if err := ApplyUpdateToResource(pr, baseName+"-data", sec, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, RNData, &corev1.Secret{}, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
-	log.Info("Updating access token Secret")
-	sec2 := &corev1.Secret{}
-	if err := ApplyUpdateToResource(pr, baseName+"-tokens", sec2, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-		return err
-	}
+	// log.Info("Updating access token Secret")
+	// if err := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	// 	return err
+	// }
 
 	log.Info("Updating Deployment")
-	dep := &appsv1.Deployment{}
-	if err := ApplyUpdateToResource(pr, baseName, dep, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	if err := ApplyUpdateToResource(pr, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
 		return err
 	}
 
@@ -173,15 +202,19 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 
 // Update the PilotSet's children based on new data in its Glidein Manager's
 // secret store
-func (pu *PilotSetReconcileState) ApplySecretUpdate(sv gmosClient.SecretValue) error {
+func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
-	sec := &corev1.Secret{}
-	return ApplyUpdateToResource(pu, pu.pilotSet.Name+"-tokens", sec, &TokenSecretValueUpdater{secValue: &sv})
+	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
 }
 
-func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, name string, resource T, creator ResourceCreator[T]) error {
+// Create a new Kubernetes object:
+// 1. Check that a resource with the given name doesn't yet exist in the namespace
+// 2. Create an initial schema for the object in-memory
+// 3. Post the newly created object to k8s via the API
+func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, creator ResourceCreator[T]) error {
 	log := log.FromContext(reconcileState.ctx)
+	name := resourceName.NameFor(reconcileState.pilotSet)
 	if err := reconcileState.reconciler.Get(
 		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
 		log.Info("Resource already exists, no action needed.")
@@ -212,8 +245,9 @@ func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 // 1. Fetch the object by name via the k8s API
 // 2. Modify the object's data in-memory
 // 3. Push the updated data back to k8s via the API
-func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, name string, resource T, resourceUpdater ResourceUpdater[T]) error {
+func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, resourceUpdater ResourceUpdater[T]) error {
 	log := log.FromContext(reconcileState.ctx)
+	name := resourceName.NameFor(reconcileState.pilotSet)
 	if err := reconcileState.reconciler.Get(
 		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.pilotSet.Namespace}, resource); err == nil {
 		updated, err := resourceUpdater.UpdateResourceValue(reconcileState.reconciler, resource)
@@ -243,23 +277,47 @@ func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for PilotSet custom resource!")
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
 
+	// Collector resources
+	log.Info("Creating Collector Signing Key if not exists")
+	if err := CreateResourceIfNotExists(psState, RNCollectorSigkey, &corev1.Secret{}, &CollectorSigningKeyCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Tokens secret if not exists")
+	if err := CreateResourceIfNotExists(psState, RNGlideinTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Collector ConfigMap if not exists")
+	if err := CreateResourceIfNotExists(psState, RNCollectorConfig, &corev1.ConfigMap{}, &CollectorConfigMapCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Collector Deployment if not exists")
+	if err := CreateResourceIfNotExists(psState, RNCollector, &appsv1.Deployment{}, &CollectorDeploymentCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Collector Service if not exists")
+	if err := CreateResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{}); err != nil {
+		return err
+	}
+
+	// PilotSet
 	log.Info("Creating Data Secret if not exists")
-	sec := &corev1.Secret{}
-	pilotSetUpdater := &PilotSetReconcileState{reconciler: r, ctx: ctx, pilotSet: pilotSet}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-data", sec, &SecretPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Access Token Secret if not exists")
-	sec2 := &corev1.Secret{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name+"-tokens", sec2, &SecretPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Deployment if not exists")
-	dep := &appsv1.Deployment{}
-	if err := CreateResourceIfNotExists(pilotSetUpdater, pilotSet.Name, dep, &DeploymentPilotSetCreator{}); err != nil {
+	if err := CreateResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{}); err != nil {
 		return err
 	}
 

@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,12 +28,14 @@ type ResourceCreator[T client.Object] interface {
 	SetResourceValue(*GlideinManagerPilotSetReconciler, *gmosv1alpha1.GlideinManagerPilotSet, T) error
 }
 
-type DeploymentPilotSetCreator struct {
+type PilotSetDeploymentCreator struct {
 }
 
-func (du *DeploymentPilotSetCreator) SetResourceValue(
+func (*PilotSetDeploymentCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(pilotSet.Name)
+	labelsMap["gmos.chtc.wisc.edu/app"] = "pilot"
+
 	dep.Spec = appsv1.DeploymentSpec{
 		Replicas: &[]int32{1}[0],
 		Selector: &metav1.LabelSelector{
@@ -66,6 +67,9 @@ func (du *DeploymentPilotSetCreator) SetResourceValue(
 					}, {
 						Name:      "gmos-secrets",
 						MountPath: "/mnt/gmos-secrets",
+					}, {
+						Name:      "collector-tokens",
+						MountPath: "/mnt/collector-tokens",
 					},
 					},
 					Command: []string{"sleep", "120"},
@@ -74,14 +78,21 @@ func (du *DeploymentPilotSetCreator) SetResourceValue(
 					Name: "gmos-data",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: pilotSet.Name + "-data",
+							SecretName: RNData.NameFor(pilotSet),
 						},
 					},
 				}, {
 					Name: "gmos-secrets",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: pilotSet.Name + "-tokens",
+							SecretName: RNTokens.NameFor(pilotSet),
+						},
+					},
+				}, {
+					Name: "collector-tokens",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: RNGlideinTokens.NameFor(pilotSet),
 						},
 					},
 				},
@@ -89,20 +100,18 @@ func (du *DeploymentPilotSetCreator) SetResourceValue(
 			},
 		},
 	}
-
-	if err := ctrl.SetControllerReference(pilotSet, dep, r.Scheme); err != nil {
-		return err
-	}
 	return nil
 }
 
-type SecretPilotSetCreator struct {
+const EMPTY_MAP_KEY string = "sample.cfg"
+
+type EmptySecretCreator struct {
 }
 
-func (du *SecretPilotSetCreator) SetResourceValue(
+func (*EmptySecretCreator) SetResourceValue(
 	r *GlideinManagerPilotSetReconciler, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, secret *corev1.Secret) error {
 	secret.Data = map[string][]byte{
-		"sample.cfg": {},
+		EMPTY_MAP_KEY: {},
 	}
 	return nil
 }
@@ -179,61 +188,37 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 		fileMap[entry.Name()] = data
 	}
 	sec.Data = fileMap
-	return true, nil
-}
 
-// ResourceUpdater implementation that updates a Secret's data key based on the
-// updated contents of a manifest file in Git
-type TokenSecretGitUpdater struct {
-	gitUpdate *gmosClient.RepoUpdate
-}
-
-func (du *TokenSecretGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
-	// update a label on the deployment
-	config, err := readManifestForNamespace(*du.gitUpdate, sec.Namespace)
-	if err != nil {
-		return false, err
-	}
-	if config.SecretSource.SecretName == "" || config.SecretSource.Dst == "" {
-		return false, nil
-	}
-
-	tokenMap := make(map[string][]byte)
-	// TODO assumes a single key in the token secret
-	if len(sec.Data) != 1 {
-		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
-	}
-	for _, val := range sec.Data {
-		tokenMap[config.SecretSource.SecretName] = val
-		break
-	}
-	sec.Data = tokenMap
-	SetSecretSourceForNamespace(sec.Namespace, config.SecretSource.SecretName)
 	return true, nil
 }
 
 // ResourceUpdater implementation that updates a Secret's value based on the
 // updated contents of a Secret in the glidein manager
 type TokenSecretValueUpdater struct {
-	secValue *gmosClient.SecretValue
+	secSource *PilotSetSecretSource
+	secValue  *gmosClient.SecretValue
 }
 
 func (du *TokenSecretValueUpdater) UpdateResourceValue(r *GlideinManagerPilotSetReconciler, sec *corev1.Secret) (bool, error) {
 	// update a label on the deployment
-	tokenMap := make(map[string][]byte)
 	// TODO assumes a single key in the token secret
-	if len(sec.Data) != 1 {
-		return false, fmt.Errorf("token secret for namespace %v has %v keys (expected 1)", sec.Namespace, len(sec.Data))
+	if len(sec.Data) > 2 {
+		// TODO is this validation needed?
+		// return false, fmt.Errorf("token secret for namespace %v has %v keys (expected <=2)", sec.Namespace, len(sec.Data))
 	}
 	val, err := base64.StdEncoding.DecodeString(du.secValue.Value)
 	if err != nil {
 		return false, err
 	}
-	for key := range sec.Data {
-		tokenMap[key] = val
-		break
+	// Token mount parameters
+	if du.secSource.Dst != "" {
+		_, tokenName := path.Split(du.secSource.Dst)
+		sec.Data[tokenName] = val
 	}
-	sec.Data = tokenMap
+
+	// Since we're not fully recreating the map, ensure that the initial placeholder key pair is removed
+	delete(sec.Data, EMPTY_MAP_KEY)
+
 	return true, nil
 }
 
@@ -268,8 +253,8 @@ func deploymentWasUpdated(dep *appsv1.Deployment, config PilotSetNamespaceConfig
 	} else {
 		updated = true
 	}
-	if len(container.Env) == len(config.Env) {
-		for i := range container.Env {
+	if len(container.Env) == len(config.Env)+1 {
+		for i := range config.Env {
 			updated = updated || container.Env[i].Name != config.Env[i].Name ||
 				container.Env[i].Value != config.Env[i].Value
 		}
@@ -287,6 +272,7 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 	if err != nil {
 		return false, err
 	}
+
 	if !deploymentWasUpdated(dep, config) {
 		return false, nil
 	}
@@ -302,20 +288,16 @@ func (du *DeploymentGitUpdater) UpdateResourceValue(r *GlideinManagerPilotSetRec
 
 	// Token mount parameters
 	if config.SecretSource.SecretName != "" && config.SecretSource.Dst != "" {
-		tokenDir, tokenName := path.Split(config.SecretSource.Dst)
+		tokenDir, _ := path.Split(config.SecretSource.Dst)
 		dep.Spec.Template.Spec.Containers[0].VolumeMounts[1].MountPath = tokenDir
-
-		dep.Spec.Template.Spec.Volumes[1].VolumeSource.Secret.Items = []corev1.KeyToPath{{
-			Key:  config.SecretSource.SecretName,
-			Path: tokenName,
-		}}
 	}
 
 	// Environment variables
-	newEnv := make([]corev1.EnvVar, len(config.Env))
+	newEnv := make([]corev1.EnvVar, len(config.Env)+1)
 	for i, val := range config.Env {
 		newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
 	}
+	newEnv[len(config.Env)] = corev1.EnvVar{Name: "LOCAL_POOL", Value: fmt.Sprintf("%s%s.%s.svc.cluster.local", dep.Name, RNCollector, dep.Namespace)}
 	dep.Spec.Template.Spec.Containers[0].Env = newEnv
 
 	// Security context parameters
