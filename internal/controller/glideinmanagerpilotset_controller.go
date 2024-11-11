@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	gmosClient "github.com/chtc/gmos-client/client"
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
@@ -178,14 +177,6 @@ func (pr *PilotSetReconcileState) ShouldUpdateTokens() (bool, error) {
 // Return whether an error is "recoverable" - either nil or not found
 func updateErrOk(err error) bool {
 	return err == nil || apierrors.IsNotFound(err)
-}
-
-// Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
-// secret store
-func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
-	log := log.FromContext(pu.ctx)
-	log.Info("Secret updated to version " + sv.Version)
-	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
 }
 
 // Create the base set of resources for a GlideinManagerPilotSet:

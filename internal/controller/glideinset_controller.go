@@ -142,6 +142,36 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 	return nil
 }
 
+// Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
+// secret store
+func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
+	log := log.FromContext(pu.ctx)
+	log.Info("Secret updated to version " + sv.Version)
+	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
+}
+
+// Retrieve the current
+func (pr *PilotSetReconcileState) GetGitSyncState() (*gmosv1alpha1.PilotSetNamespaceConfig, error) {
+	log := log.FromContext(pr.ctx)
+	log.Info("Retrieving current Git sync state from GlideinSet")
+	currentConfig := gmosv1alpha1.GlideinSet{}
+	if err := GetResourceValue(pr, RNBase, &currentConfig); err != nil {
+		log.Error(err, "Unable to retrieve Git sync state from GlideinSet")
+		return &gmosv1alpha1.PilotSetNamespaceConfig{}, err
+	}
+	return currentConfig.RemoteManifest, nil
+}
+
+func (pr *PilotSetReconcileState) GetSecretSyncState() (string, error) {
+	log := log.FromContext(pr.ctx)
+	sec := corev1.Secret{}
+	if err := GetResourceValue(pr, RNTokens, &sec); err != nil {
+		log.Error(err, "Unable to retrieve upstream version from Secret")
+		return "", err
+	}
+	return sec.Labels["gmos.chtc.wisc.edu/secret-version"], nil
+}
+
 // Place a new set of auth tokens from the local collector into Secrets in the namespace
 // A separate set of tokens are generated for the Glidein itself and the EP in the glidein
 func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {

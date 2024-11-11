@@ -203,6 +203,10 @@ func (du *TokenSecretValueUpdater) UpdateResourceValue(r Reconciler, sec *corev1
 		_, tokenName := path.Split(du.secSource.Dst)
 		sec.Data[tokenName] = val
 	}
+	if sec.Labels == nil {
+		sec.Labels = make(map[string]string)
+	}
+	sec.Labels["gmos.chtc.wisc.edu/secret-version"] = du.secValue.Version
 
 	// Since we're not fully recreating the map, ensure that the initial placeholder key pair is removed
 	delete(sec.Data, EMPTY_MAP_KEY)
