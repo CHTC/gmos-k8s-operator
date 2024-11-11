@@ -15,40 +15,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Interface for a struct that handles receiving Git updates from a Glidein Manager
+// Interface for a struct that handles receiving Git updates from a Glidein Manager,
+// and retrieving the current Git state from its managed k8s objects
 type GlideinManagerUpdateHandler interface {
 	// Update the resources in a namespace based on new data in the Glidein Manager's git repository
 	ApplyGitUpdate(gmosClient.RepoUpdate) error
 
+	// Retrieve the current state of the Git repo stored on the resource
+	GetGitSyncState() (*gmosv1alpha1.PilotSetNamespaceConfig, error)
+
+	GetSecretSyncState() (string, error)
+
 	// Update the resources in a namespace based on new data in the Glidein Manager's secret store
 	ApplySecretUpdate(gmosv1alpha1.PilotSetSecretSource, gmosClient.SecretValue) error
-}
-
-// Struct tracking the sync state of a (set of) K8s resources with the Git config
-// data stored in the Glidein Manager
-type ResourceSyncState struct {
-	// Namespace to which the resource belongs
-	namespace string
-
-	// Last commit to which the resource was successfully updated
-	currentCommit string
-
-	// Last secret version to which the resource was successfully updated
-	currentSecretVersion string
-
-	// Struct with functions that apply changes to the Glidein Manager's data
-	// to a resource
-	updateHandler GlideinManagerUpdateHandler
-
-	// Hold the latest config for the resource from the upstream glidein manager
-	currentConfig gmosv1alpha1.PilotSetNamespaceConfig
 }
 
 // Helper struct that polls a Glidein Manager Git repo on an interval and passes updated config
 // data into a GlideinManagerUpdateHandler implementation. Note that multiple resources can
 // be configured via Git data hosted on a single Glidein Manager
 type GlideinManagerPoller struct {
-	syncStates       map[string]*ResourceSyncState
+	updateHandlers   map[string]GlideinManagerUpdateHandler
 	client           *gmosClient.GlideinManagerClient
 	dataUpdateTicker *time.Ticker
 	refreshTicker    *time.Ticker
@@ -64,9 +50,9 @@ func NewGlidenManagerPoller(clientName string, managerUrl string) *GlideinManage
 	}
 
 	poller := &GlideinManagerPoller{
-		syncStates: make(map[string]*ResourceSyncState),
-		client:     client,
-		doneChan:   make(chan bool),
+		updateHandlers: make(map[string]GlideinManagerUpdateHandler),
+		client:         client,
+		doneChan:       make(chan bool),
 	}
 	return poller
 }
@@ -113,16 +99,13 @@ func (p *GlideinManagerPoller) StopPolling() {
 
 // Check whether a GlideinManagerUpdateHandler has already been registered for the given resource
 func (p *GlideinManagerPoller) HasUpdateHandlerForResource(resource string) bool {
-	_, exists := p.syncStates[resource]
+	_, exists := p.updateHandlers[resource]
 	return exists
 }
 
 // Add a new GlideinManagerUpdateHandler for the given resource
-func (p *GlideinManagerPoller) SetUpdateHandler(resource string, namespace string, updateHandler GlideinManagerUpdateHandler) {
-	if !p.HasUpdateHandlerForResource(resource) {
-		p.syncStates[resource] = &ResourceSyncState{namespace: namespace}
-	}
-	p.syncStates[resource].updateHandler = updateHandler
+func (p *GlideinManagerPoller) SetUpdateHandler(resource string, updateHandler GlideinManagerUpdateHandler) {
+	p.updateHandlers[resource] = updateHandler
 }
 
 // Main resource config update loop:
@@ -137,27 +120,29 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 		log.Error(err, "Unable to check for git update")
 		return
 	}
-	for resource, syncState := range p.syncStates {
-		namespace := syncState.namespace
-		if syncState.currentCommit == repoUpdate.CurrentCommit {
-			continue
-		}
-		log.Info(fmt.Sprintf("Updating resource %v to commit %v with updater %+v", resource, repoUpdate.CurrentCommit, syncState))
-
-		config, err := readManifestForNamespace(repoUpdate, namespace)
+	for resource, updateHandler := range p.updateHandlers {
+		currentConfig, err := updateHandler.GetGitSyncState()
 		if err != nil {
-			log.Error(err, fmt.Sprintf("Git repo contains invalid manifest for namespace %v", namespace))
+			log.Error(err, "Unable to retrieve current Git sync state for resource")
 			continue
 		}
-		syncState.currentConfig = config
+		if currentConfig != nil {
+			currentCommit := currentConfig.CurrentCommit
+			if currentCommit == repoUpdate.CurrentCommit {
+				continue
+			}
+		}
+		log.Info(fmt.Sprintf("Updating resource %v to commit %v with updater %+v", resource, repoUpdate.CurrentCommit, updateHandler))
 
-		if err := syncState.updateHandler.ApplyGitUpdate(repoUpdate); err != nil {
+		// TODO this trusts that the ApplyGitUpdate implementer updates its own CurrentCommit
+		if err := updateHandler.ApplyGitUpdate(repoUpdate); err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while handling repo update for resource %v", resource))
-		} else {
-			syncState.currentCommit = repoUpdate.CurrentCommit
 		}
 	}
 }
+
+// Max length of a value that can be stored in a k8s label
+const MAX_LABEL_LENGTH = 63
 
 // Main secret resource value update loop:
 // - Check whether the latest version of the credential in the Secret is behind the latest upstream Secret version
@@ -166,28 +151,46 @@ func (p *GlideinManagerPoller) CheckForGitUpdates() {
 func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
-	for _, syncState := range p.syncStates {
-		namespace := syncState.namespace
-		secretName := syncState.currentConfig.SecretSource.SecretName
-		secretDst := syncState.currentConfig.SecretSource.Dst
+	for _, updateHandler := range p.updateHandlers {
+		currentConfig, err := updateHandler.GetGitSyncState()
+		if err != nil {
+			log.Error(err, "Unable to retrieve current Git sync state for resource")
+			continue
+		}
+		if currentConfig == nil {
+			// Current config doesn't exist yet, try again next time
+			continue
+		}
+
+		namespace := currentConfig.Namespace
+		secretName := currentConfig.SecretSource.SecretName
+		secretDst := currentConfig.SecretSource.Dst
 		// Only check on namespaces with a secret name and config specified
 		if secretName == "" || secretDst == "" {
 			continue
 		}
-		nextSecret, err := p.client.GetSecret(syncState.currentConfig.SecretSource.SecretName)
+		nextSecret, err := p.client.GetSecret(currentConfig.SecretSource.SecretName)
 		if err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while fetching secret for namespace %v", namespace))
 			continue
 		}
-		if nextSecret.Version == syncState.currentSecretVersion {
+
+		// TODO this is a bit hacky, we can only store the first 63 characters of the secret hash in a label
+		nextSecret.Version = nextSecret.Version[:63]
+
+		currentSecretVersion, err := updateHandler.GetSecretSyncState()
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Error occurred while fetching current secret state secret for namespace %v", namespace))
+			continue
+		}
+
+		if nextSecret.Version == currentSecretVersion {
 			continue
 		}
 
 		log.Info(fmt.Sprintf("Updating namespace %v to secret %v, version %v", namespace, nextSecret.Name, nextSecret.Version))
-		if err := syncState.updateHandler.ApplySecretUpdate(syncState.currentConfig.SecretSource, nextSecret); err != nil {
+		if err := updateHandler.ApplySecretUpdate(currentConfig.SecretSource, nextSecret); err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while handling secret update for namespace %v", namespace))
-		} else {
-			syncState.currentSecretVersion = nextSecret.Version
 		}
 	}
 }
@@ -230,7 +233,7 @@ func AddGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 	if existingPoller, exists := activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl]; !exists {
 		log.Info(fmt.Sprintf("No existing watchers for manager %v. Creating for namespace %v", glideinSet.Spec.GlideinManagerUrl, glideinSet.Namespace))
 		poller := NewGlidenManagerPoller(clientName, glideinSet.Spec.GlideinManagerUrl)
-		poller.SetUpdateHandler(namespacedName, glideinSet.Namespace, updateHandler)
+		poller.SetUpdateHandler(namespacedName, updateHandler)
 		activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl] = poller
 		go func() {
 			if err := poller.DoHandshakeWithRetry(15, 5*time.Second); err != nil {
@@ -243,24 +246,9 @@ func AddGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 	} else if !existingPoller.HasUpdateHandlerForResource(namespacedName) {
 		// remove the client from other namespaces
 		RemoveGlideinManagerWatcher(glideinSet)
-		existingPoller.SetUpdateHandler(namespacedName, glideinSet.Namespace, updateHandler)
+		existingPoller.SetUpdateHandler(namespacedName, updateHandler)
 	}
 	return nil
-}
-
-// Utility function to mark a resource out of sync with Git whenever it's directly updated
-// via changes to its parent CRD
-func MarkResourceOutOfSync(namespacedName string) {
-	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Marking resource %v as out-of-sync", namespacedName))
-
-	for _, poller := range activeGlideinManagerPollers {
-		if poller.HasUpdateHandlerForResource(namespacedName) {
-			poller.syncStates[namespacedName].currentCommit = ""
-			poller.syncStates[namespacedName].currentSecretVersion = ""
-			break
-		}
-	}
 }
 
 // Remove the Glidein Manager watcher for a single GlideinSet resource. If no watchers are
@@ -274,8 +262,8 @@ func RemoveGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
 	for _, poller := range activeGlideinManagerPollers {
 		if poller.HasUpdateHandlerForResource(namespacedName) {
 			log.Info(fmt.Sprintf("consumer removed for manager %v", poller.client.ManagerUrl))
-			delete(poller.syncStates, namespacedName)
-			if len(poller.syncStates) == 0 {
+			delete(poller.updateHandlers, namespacedName)
+			if len(poller.updateHandlers) == 0 {
 				toDelete = poller
 			}
 			break

@@ -10,9 +10,10 @@ type PilotSetNamespaceConfig struct {
 	Command      []string             `yaml:"command" json:"command,omitempty"`
 
 	// TODO a bit odd to include a couple k8s only fields here
-	RepoPath       string `json:"path"`
-	CurrentCommit  string `json:"currentCommit"`
-	PreviousCommit string `json:"previousCommit,omitempty"`
+	RepoPath             string `json:"path"`
+	CurrentCommit        string `json:"currentCommit"`
+	PreviousCommit       string `json:"previousCommit,omitempty"`
+	CurrentSecretVersion string `json:"currentSecretVersion,omitempty"`
 }
 
 // Config for which subdirectory of the git repo should be converted into a ConfigMap
