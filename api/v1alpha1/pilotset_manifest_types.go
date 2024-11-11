@@ -1,5 +1,6 @@
 package v1alpha1
 
+// Config for a single namespace provided by a
 type PilotSetNamespaceConfig struct {
 	Namespace    string               `yaml:"namespace" json:"namespace,omitempty"`
 	Image        string               `yaml:"image" json:"image"`

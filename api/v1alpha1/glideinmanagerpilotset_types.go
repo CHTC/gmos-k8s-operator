@@ -104,8 +104,9 @@ type GlideinSet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Spec for the GlideinSet as determined by its
-	Spec           GlideinSetSpec           `json:"spec,omitempty"`
+	// Spec for the GlideinSet as determined by its parent GlideinManagerPilotSet
+	Spec GlideinSetSpec `json:"spec,omitempty"`
+	// Config injected into the GlideinSet via its upstream GlideinManager Git Repo
 	RemoteManifest *PilotSetNamespaceConfig `json:"remoteManifest,omitempty"`
 	Status         GlideinSetStatus         `json:"status,omitempty"`
 }

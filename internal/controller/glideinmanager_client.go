@@ -176,7 +176,7 @@ func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 		}
 
 		// TODO this is a bit hacky, we can only store the first 63 characters of the secret hash in a label
-		nextSecret.Version = nextSecret.Version[:63]
+		nextSecret.Version = nextSecret.Version[:MAX_LABEL_LENGTH]
 
 		currentSecretVersion, err := updateHandler.GetSecretSyncState()
 		if err != nil {
