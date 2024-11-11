@@ -8,13 +8,21 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type ResourceName string
 
 const (
+	// Resource Names for Glidein Pods + Secrets
 	RNBase            ResourceName = ""
 	RNCollectorTokens ResourceName = "-collector-tokens"
 	RNData            ResourceName = "-data"
 	RNTokens          ResourceName = "-tokens"
+
+	// Resource Names for local Collector
 	RNCollector       ResourceName = "-collector"
 	RNCollectorSigkey ResourceName = "-collector-sigkey"
 	RNCollectorConfig ResourceName = "-collector-cfg"
+
+	// Resource Names for local Prometheus instance
+	RNPrometheus            ResourceName = "-prometheus"
+	RNPrometheusConfig      ResourceName = "-prometheus-config"
+	RNPrometheusPushgateway ResourceName = "-prometheus-pushgateway"
 )
 
 // Util function to prefix a resource name with the name of
