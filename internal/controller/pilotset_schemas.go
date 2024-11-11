@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -160,7 +161,11 @@ func (du *DataSecretGitUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Se
 	manifest := du.manifest
 
 	listing, err := os.ReadDir(filepath.Join(manifest.RepoPath, manifest.Volume.Src))
-	if err != nil {
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		// Corner case where operator hasn't cloned local copies yet, nothing to do
+		return false, nil
+
+	} else if err != nil {
 		return false, err
 	}
 
