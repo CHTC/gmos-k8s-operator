@@ -21,7 +21,6 @@ const (
 
 	// Resource Names for local Prometheus instance
 	RNPrometheus            ResourceName = "-prometheus"
-	RNPrometheusConfig      ResourceName = "-prometheus-config"
 	RNPrometheusPushgateway ResourceName = "-prometheus-pushgateway"
 )
 

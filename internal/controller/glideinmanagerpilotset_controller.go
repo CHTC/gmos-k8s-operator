@@ -179,18 +179,16 @@ func updateErrOk(err error) bool {
 	return err == nil || apierrors.IsNotFound(err)
 }
 
-// Create the base set of resources for a GlideinManagerPilotSet:
+// Create the Collector and associated resources for a PilotSet
 // - A Secret containing the signing key for the Collector's tokens
 // - A ConfigMap containing config.d files for the Collector
 // - A Deployment hosting a single replica of a Collector pod
 // - A Service for TCP on port 9618 on the Collecor
-// Also, create or update the set of GlideinSets associated with the Collector
-func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+func createCollectorForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+	// Collector resources
 	log := log.FromContext(ctx)
-	log.Info("Got new value for GlideinManagerPilotSet custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
-	// Collector resources
 	log.Info("Creating Collector Signing Key if not exists")
 	if err := CreateResourceIfNotExists(psState, RNCollectorSigkey, &corev1.Secret{}, &CollectorSigningKeyCreator{}); err != nil {
 		return err
@@ -210,7 +208,78 @@ func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 	if err := CreateResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{}); err != nil {
 		return err
 	}
+	return nil
+}
 
+// Create or update the Prometheus Monitoring Server and associated resources for a PilotSet
+// - A Secret containing the signing key for the Collector's tokens
+// - A ConfigMap containing config.d files for the Collector
+// - A Deployment hosting a single replica of a Collector pod
+// - A Service for TCP on port 9618 on the Collecor
+func createMonitoringForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+	// Collector resources
+	log := log.FromContext(ctx)
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
+
+	// Prometheus monitoring resources
+	log.Info("Creating Prometheus PushGateway if not exists")
+	if err := CreateResourceIfNotExists(psState, RNPrometheusPushgateway, &appsv1.Deployment{}, &PrometheusPushgatewayDeploymentCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Creating Prometheus PushGateway Service if not exists")
+	if err := CreateResourceIfNotExists(psState, RNPrometheusPushgateway, &corev1.Service{}, &PrometheusPushgatewayServiceCreator{}); err != nil {
+		return err
+	}
+
+	log.Info("Updating Prometheus ConfigMap if exists, creating otherwise")
+	configEditor := &PrometheusConfigMapEditor{pilotSet: pilotSet}
+	if err := ApplyUpdateToResource(psState, RNPrometheus, &corev1.ConfigMap{}, configEditor); apierrors.IsNotFound(err) {
+		if err := CreateResourceIfNotExists(psState, RNPrometheus, &corev1.ConfigMap{}, configEditor); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	log.Info("Updating Prometheus Deployment if exists, creating otherwise")
+	deploymentEditor := &PrometheusDeploymentEditor{monitoring: pilotSet.Spec.Prometheus}
+	if err := ApplyUpdateToResource(psState, RNPrometheus, &appsv1.Deployment{}, deploymentEditor); apierrors.IsNotFound(err) {
+		if err := CreateResourceIfNotExists(psState, RNPrometheus, &appsv1.Deployment{}, deploymentEditor); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	log.Info("Creating Prometheus Service if not exists")
+	if err := CreateResourceIfNotExists(psState, RNPrometheus, &corev1.Service{}, &PrometheusServiceCreator{}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Create the base set of resources for a GlideinManagerPilotSet:
+// - A Collector Deployment with associated config and service
+// - A Prometheus monitoring instance with associated
+// - The set of GlideinSets associated with the Collector
+func CreateResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+	log := log.FromContext(ctx)
+	log.Info("Got new value for GlideinManagerPilotSet custom resource!")
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
+
+	// Collector Resources
+	if err := createCollectorForPilotSet(r, ctx, pilotSet); err != nil {
+		return err
+	}
+
+	// Monitoring Resources
+	if err := createMonitoringForPilotSet(r, ctx, pilotSet); err != nil {
+		return err
+	}
+
+	// GlideinSet resources
 	log.Info("Updating GlideinSets")
 	if err := recoincileGlideinSets(pilotSet, psState); err != nil {
 		return err

@@ -34,8 +34,22 @@ type GlideinManagerPilotSetSpec struct {
 	// rather than the clients
 	GlideinManagerUrl string `json:"glideinManagerUrl,omitempty"`
 
+	// Set of configuration for the Prometheus instance that monitors the collector and glideins associated
+	// with the GlideinSet
+	Prometheus PrometheusMonitoringSpec `json:"prometheus,omitempty"`
+
 	// Collection of Glidein deployment specs
 	GlideinSets []GlideinSetSpec `json:"glideinSets"`
+}
+
+// Configuration info for the Prometheus instance that monitors glideins in a namespace
+type PrometheusMonitoringSpec struct {
+	// A Service Account name that allows the Prometheus instance to perform service discovery of
+	// glideins via the kubernetes API. Service Discovery is skipped if this field is left empty
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+
+	// A VolumeSource for storing scraped Prometheus metrics
+	StorageVolume *corev1.VolumeSource `json:"storageVolumeSource,omitempty"`
 }
 
 // Collection of Glideins sharing a priority class, per-pod resource allocation, and node affinity

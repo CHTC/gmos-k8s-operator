@@ -1,13 +1,29 @@
 package controller
 
 import (
-	"fmt"
+	"bytes"
 
+	"text/template"
+
+	"github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
+
+// Struct for string formatting the Prometheus Config file
+type PrometheusConfigTemplate struct {
+	Namespace string
+
+	ServiceAccount  string
+	ResourceName    string
+	PushGateway     string
+	PushGatewayPort int
+
+	Collector     string
+	CollectorPort int
+}
 
 const PROMETHEUS_CONFIG_YAML = `
 global:
@@ -18,10 +34,31 @@ rule_files:
 alerting:
   alertmanagers: []
 scrape_configs:
+  {{ if and (.ServiceAccount) (not (eq .ServiceAccount "default")) }}
+  - job_name: 'node-cadvisor'
+    kubernetes_sd_configs:
+      - role: node
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+    metric_relabel_configs:
+      - source_labels: [pod]
+        regex: {{.ResourceName}}-.*
+        action: keep
+  {{ end }}
   - job_name: 'pushgateway'
     honor_labels: true
     static_configs:
-    - targets: [%v.%v.svc.cluster.local:9091]
+    - targets: [{{.PushGateway}}.{{.Namespace}}.svc.cluster.local:{{.PushGatewayPort}}]
+    - targets: [{{.Collector}}.{{.Namespace}}.svc.cluster.local:{{.CollectorPort}}]
 `
 
 const PROMETHEUS = "prometheus"
@@ -29,24 +66,72 @@ const PUSHGATEWAY = "prometheus-pushgateway"
 const PROMETHEUS_PORT = 9090
 const PUSHGATEWAY_PORT = 9091
 
-type PrometheusConfigMapCreator struct {
+func getPrometheusConfig(resource metav1.Object, monitoring v1alpha1.PrometheusMonitoringSpec) (string, error) {
+	tmpl, err := template.New("prometheusConfig").Parse(PROMETHEUS_CONFIG_YAML)
+	if err != nil {
+		return "", err
+	}
+	configVars := PrometheusConfigTemplate{
+		Namespace:      resource.GetNamespace(),
+		ResourceName:   RNBase.NameFor(resource),
+		ServiceAccount: monitoring.ServiceAccount,
+
+		PushGateway:     RNPrometheusPushgateway.NameFor(resource),
+		PushGatewayPort: PUSHGATEWAY_PORT,
+		Collector:       RNCollector.NameFor(resource),
+		CollectorPort:   9618, // TODO
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, configVars); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
-func (pc *PrometheusConfigMapCreator) SetResourceValue(
+type PrometheusConfigMapEditor struct {
+	pilotSet *v1alpha1.GlideinManagerPilotSet
+}
+
+func (pe *PrometheusConfigMapEditor) SetResourceValue(
 	r Reconciler, resource metav1.Object, config *corev1.ConfigMap) error {
+
+	configYaml, err := getPrometheusConfig(pe.pilotSet, pe.pilotSet.Spec.Prometheus)
+	if err != nil {
+		return err
+	}
 	config.Data = map[string]string{
-		"prometheus.yaml": fmt.Sprintf(PROMETHEUS_CONFIG_YAML, RNPrometheusPushgateway.NameFor(resource), resource.GetNamespace()),
+		"prometheus.yaml": configYaml,
 	}
 	return nil
 }
 
-type PrometheusDeploymentCreator struct {
+func (pe *PrometheusConfigMapEditor) UpdateResourceValue(r Reconciler, config *corev1.ConfigMap) (bool, error) {
+	configYaml, err := getPrometheusConfig(pe.pilotSet, pe.pilotSet.Spec.Prometheus)
+	if err != nil {
+		return false, err
+	}
+	oldConfig := config.Data["prometheus.yaml"]
+	config.Data = map[string]string{
+		"prometheus.yaml": configYaml,
+	}
+	return oldConfig != configYaml, nil
 }
 
-func (pc *PrometheusDeploymentCreator) SetResourceValue(
+type PrometheusDeploymentEditor struct {
+	monitoring v1alpha1.PrometheusMonitoringSpec
+}
+
+func (pe *PrometheusDeploymentEditor) SetResourceValue(
 	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	labelsMap["gmos.chtc.wisc.edu/app"] = PROMETHEUS
+
+	volumeSource := pe.monitoring.StorageVolume
+	if volumeSource == nil {
+		volumeSource = &corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		}
+	}
 
 	dep.Spec = appsv1.DeploymentSpec{
 		Replicas: &[]int32{1}[0],
@@ -83,21 +168,32 @@ func (pc *PrometheusDeploymentCreator) SetResourceValue(
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: RNPrometheusConfig.NameFor(resource),
+								Name: RNPrometheus.NameFor(resource),
 							},
 						},
 					},
 				}, {
-					Name: "prometheus-storage",
-					VolumeSource: corev1.VolumeSource{
-						EmptyDir: &corev1.EmptyDirVolumeSource{},
-					},
+					Name:         "prometheus-storage",
+					VolumeSource: *volumeSource,
 				},
 				},
+				ServiceAccountName: pe.monitoring.ServiceAccount,
 			},
 		},
 	}
 	return nil
+}
+
+func (pu *PrometheusDeploymentEditor) UpdateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
+	volumeSource := pu.monitoring.StorageVolume
+	if volumeSource == nil {
+		volumeSource = &corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		}
+	}
+	dep.Spec.Template.Spec.ServiceAccountName = pu.monitoring.ServiceAccount
+	dep.Spec.Template.Spec.Volumes[1].VolumeSource = *volumeSource
+	return true, nil
 }
 
 type PrometheusServiceCreator struct {
