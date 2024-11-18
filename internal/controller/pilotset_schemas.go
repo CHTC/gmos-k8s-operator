@@ -313,5 +313,5 @@ func (gc *GlideinSetCreator) SetResourceValue(
 
 func (gu *GlideinSetCreator) UpdateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
 	glideinSet.Spec = *gu.spec
-	return false, nil
+	return true, nil
 }
