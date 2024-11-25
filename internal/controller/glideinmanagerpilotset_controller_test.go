@@ -130,7 +130,8 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		It("should not create a GlideinSet", func() {
 			Eventually(func(g Gomega) {
 				glideinSets := gmosv1alpha1.GlideinSetList{}
-				err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"))
+				matchingLabels := client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": resourceName})
+				err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"), matchingLabels)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(len(glideinSets.Items)).To(Equal(0))
@@ -298,7 +299,8 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Eventually(func(g Gomega) {
 				glideinSets := gmosv1alpha1.GlideinSetList{}
-				err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"))
+				matchingLabels := client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": resourceName})
+				err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"), matchingLabels)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(len(glideinSets.Items)).To(Equal(0))

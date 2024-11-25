@@ -33,12 +33,16 @@ spec:
           metadata:
             type: object
           remoteManifest:
+            description: Config injected into the GlideinSet via its upstream GlideinManager
+              Git Repo
             properties:
               command:
                 items:
                   type: string
                 type: array
               currentCommit:
+                type: string
+              currentSecretVersion:
                 type: string
               env:
                 items:
@@ -107,7 +111,7 @@ spec:
             - path
             type: object
           spec:
-            description: Spec for the GlideinSet as determined by its
+            description: Spec for the GlideinSet as determined by its parent GlideinManagerPilotSet
             properties:
               glideinManagerUrl:
                 description: glideinManagerUrl is the url of the glidein manager from

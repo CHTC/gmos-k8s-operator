@@ -117,8 +117,12 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
-	AddGlideinManagerWatcher(glideinSet, glState)
-	AddCollectorClient(glideinSet, glState)
+	if err := AddGlideinManagerWatcher(glideinSet, glState); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := AddCollectorClient(glideinSet, glState); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
