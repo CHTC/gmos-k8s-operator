@@ -232,7 +232,7 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 		gsResource := ResourceName("-" + glideinSetSpec.Name)
 		// TODO this double dips API calls by checking for existence on update then checking again on create
 		creator := &GlideinSetCreator{spec: &glideinSetSpec}
-		err := ApplyUpdateToResource(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator)
+		err := applyUpdateToResource(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator)
 		if apierrors.IsNotFound(err) {
 			if err := CreateResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator); err != nil {
 				return err

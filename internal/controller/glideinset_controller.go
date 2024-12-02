@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gmosClient "github.com/chtc/gmos-client/client"
-	"github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
@@ -107,20 +106,20 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Add the deployment and secrets for the pilotSet if it doesn't already exist
-	if err := CreateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+	if err := createResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Update the deployment and git-driven secrets for the pilotSet
-	if err := UpdateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+	if err := updateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
-	if err := AddGlideinManagerWatcher(glideinSet, glState); err != nil {
+	if err := addGlideinManagerWatcher(glideinSet, glState); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := AddCollectorClient(glideinSet, glState); err != nil {
+	if err := addCollectorClient(glideinSet, glState); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -135,12 +134,13 @@ func FinalizeGlideinSet(glideinSet *gmosv1alpha1.GlideinSet) {
 }
 
 // Update the GlideinSet's RemoteManifest field based on new data in its Glidein Manager's git repository
-func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
+func (pr *PilotSetReconcileState) applyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
 	log := log.FromContext(pr.ctx)
 	log.Info("Got repo update!")
 
 	log.Info("Updating GlideinSet remote manifest")
-	if err := ApplyUpdateToResource(pr, RNBase, &v1alpha1.GlideinSet{}, &GlideinSetGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	err := applyUpdateToResource(pr, RNBase, &gmosv1alpha1.GlideinSet{}, &GlideinSetGitUpdater{gitUpdate: &gitUpdate})
+	if !updateErrOk(err) {
 		return err
 	}
 	return nil
@@ -148,28 +148,28 @@ func (pr *PilotSetReconcileState) ApplyGitUpdate(gitUpdate gmosClient.RepoUpdate
 
 // Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
 // secret store
-func (pu *PilotSetReconcileState) ApplySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
+func (pu *PilotSetReconcileState) applySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
 	log.Info("Secret updated to version " + sv.Version)
-	return ApplyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
+	return applyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
 }
 
 // Retrieve the current
-func (pr *PilotSetReconcileState) GetGitSyncState() (*gmosv1alpha1.PilotSetNamespaceConfig, error) {
+func (pr *PilotSetReconcileState) getGitSyncState() (*gmosv1alpha1.PilotSetNamespaceConfig, error) {
 	log := log.FromContext(pr.ctx)
 	log.Info("Retrieving current Git sync state from GlideinSet")
 	currentConfig := gmosv1alpha1.GlideinSet{}
-	if err := GetResourceValue(pr, RNBase, &currentConfig); err != nil {
+	if err := getResourceValue(pr, RNBase, &currentConfig); err != nil {
 		log.Error(err, "Unable to retrieve Git sync state from GlideinSet")
 		return &gmosv1alpha1.PilotSetNamespaceConfig{}, err
 	}
 	return currentConfig.RemoteManifest, nil
 }
 
-func (pr *PilotSetReconcileState) GetSecretSyncState() (string, error) {
+func (pr *PilotSetReconcileState) getSecretSyncState() (string, error) {
 	log := log.FromContext(pr.ctx)
 	sec := corev1.Secret{}
-	if err := GetResourceValue(pr, RNTokens, &sec); err != nil {
+	if err := getResourceValue(pr, RNTokens, &sec); err != nil {
 		log.Error(err, "Unable to retrieve upstream version from Secret")
 		return "", err
 	}
@@ -180,8 +180,8 @@ func (pr *PilotSetReconcileState) GetSecretSyncState() (string, error) {
 // A separate set of tokens are generated for the Glidein itself and the EP in the glidein
 func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
 	// TODO this occassionally results in the error "the object has been modified; please apply your changes to the latest version and try again"
-	err := ApplyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
-	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
+	err := applyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
+	err2 := applyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
 	return errors.Join(err, err2)
 }
 
@@ -190,7 +190,7 @@ func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotT
 // - Secret containing data files from the upstream Git repo
 // - Secret containing external Collector access tokens provided by the Glidein Manager
 // - Empty deployment with volume mounts for the above secrets
-func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, glideinSet *gmosv1alpha1.GlideinSet) error {
+func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, glideinSet *gmosv1alpha1.GlideinSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for GlideinSet custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
@@ -221,12 +221,12 @@ func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 // Update the set of resources associated with a GlideinSet based on changes to its RemoteManifest
 // field supplied from the upstream Git repo
 // - Update the Deployment with the image, environment, and volume mounts supplied from Git
-func UpdateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, glideinSet *gmosv1alpha1.GlideinSet) error {
+func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, glideinSet *gmosv1alpha1.GlideinSet) error {
 	log := log.FromContext(ctx)
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
 
 	log.Info("Updating Deployment with changes to CR")
-	if err := ApplyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
+	if err := applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for GlideinSet")
 		return err
 	}
@@ -237,13 +237,13 @@ func UpdateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	}
 
 	log.Info("Updating Deployment with changes to RemoteManifest")
-	if err := ApplyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest}); !updateErrOk(err) {
+	if err := applyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest}); !updateErrOk(err) {
 		log.Error(err, "Unable to update Deployment from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
 		return err
 	}
 
 	log.Info("Updating Data Secret with changes to RemoteManifest")
-	if err := ApplyUpdateToResource(glState, RNData, &corev1.Secret{}, &DataSecretGitUpdater{manifest: glideinSet.RemoteManifest}); !updateErrOk(err) {
+	if err := applyUpdateToResource(glState, RNData, &corev1.Secret{}, &DataSecretGitUpdater{manifest: glideinSet.RemoteManifest}); !updateErrOk(err) {
 		log.Error(err, "Unable to update Secret from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
 		return err
 	}

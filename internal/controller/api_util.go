@@ -57,7 +57,7 @@ func CreateResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 // 1. Fetch the object by name via the k8s API
 // 2. Modify the object's data in-memory
 // 3. Push the updated data back to k8s via the API
-func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, resourceUpdater ResourceUpdater[T]) error {
+func applyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, resourceUpdater ResourceUpdater[T]) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.NameFor(reconcileState.resource)
 	log.Info("Applying updates to resource " + name)
@@ -87,10 +87,15 @@ func ApplyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 	return nil
 }
 
-func GetResourceValue[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T) error {
+func getResourceValue[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.NameFor(reconcileState.resource)
-	if err := reconcileState.reconciler.GetClient().Get(reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()}, resource); err != nil {
+	err := reconcileState.reconciler.GetClient().Get(
+		reconcileState.ctx,
+		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
+		resource,
+	)
+	if err != nil {
 		log.Error(err, "Unable to retrieve Git sync state from GlideinSet")
 		return err
 	}

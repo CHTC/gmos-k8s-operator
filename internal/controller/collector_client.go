@@ -172,7 +172,7 @@ func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) 
 
 // Register a new CollectorUpdateHandler with the Collector associated with the
 // given resource
-func AddCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) error {
+func addCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) error {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
