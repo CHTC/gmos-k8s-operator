@@ -99,3 +99,30 @@ rules:
   - get
   - patch
   - update
+
+- apiGroups:
+  - gmos.chtc.wisc.edu
+  resources:
+  - glideinsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gmos.chtc.wisc.edu
+  resources:
+  - glideinsets/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gmos.chtc.wisc.edu
+  resources:
+  - glideinsets/status
+  verbs:
+  - get
+  - patch
+  - update

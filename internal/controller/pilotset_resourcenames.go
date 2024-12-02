@@ -1,8 +1,6 @@
 package controller
 
-import (
-	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
-)
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // "Enum" of the named resources created by the operator for a given
 // custom resource. All child resources are prefixed by the name
@@ -11,7 +9,7 @@ type ResourceName string
 
 const (
 	RNBase            ResourceName = ""
-	RNGlideinTokens   ResourceName = "-collector-tokens"
+	RNCollectorTokens ResourceName = "-collector-tokens"
 	RNData            ResourceName = "-data"
 	RNTokens          ResourceName = "-tokens"
 	RNCollector       ResourceName = "-collector"
@@ -19,6 +17,18 @@ const (
 	RNCollectorConfig ResourceName = "-collector-cfg"
 )
 
-func (rn ResourceName) NameFor(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) string {
-	return pilotSet.Name + string(rn)
+// Util function to prefix a resource name with the name of
+// its parent
+func (rn ResourceName) nameFor(obj metav1.Object) string {
+	return obj.GetName() + string(rn)
+}
+
+// Concatinate a resource's namespace to its name for a unique key
+func namespacedName(namespace string, name string) string {
+	// This is just used for dictionary keys and doesn't need to be a valid k8s object name
+	return namespace + "/" + name
+}
+
+func namespacedNameFor(obj metav1.Object) string {
+	return namespacedName(obj.GetNamespace(), obj.GetName())
 }

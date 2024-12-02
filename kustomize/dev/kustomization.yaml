@@ -7,3 +7,5 @@ bases:
 resources:
   - namespace.yaml
   - pilot-set.yaml
+#  - glidein-set.yaml
+  - priorityclasses.yaml

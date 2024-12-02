@@ -1,3 +1,7 @@
+// Set of data structures for attaching a "collector poller" to a PilotSet
+// resource that polls the collector at a regular interval and updates
+// the PilotSet's credentials secret with new credentials from the Collector
+
 package controller
 
 import (
@@ -14,24 +18,29 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	clientConfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
+// Interface for a struct that handles receiving auth tokens from a Collector
 type CollectorUpdateHandler interface {
-	ShouldUpdateTokens() (bool, error)
-	ApplyTokensUpdate(string, string) error
+	// Check whether the current set of tokens held by the client have expired
+	shouldUpdateTokens() (bool, error)
+
+	// Update the kubernetes resources managed by the client with a new auth token
+	applyTokensUpdate(string, string) error
 }
 
+// Helper struct that polls a Collector on an interval and passes updated credentials
+// into a CollectorUpdateHandler implementation
 type CollectorClient struct {
 	ctx               context.Context
-	pilotSet          *gmosv1alpha1.GlideinManagerPilotSet
+	resource          metav1.Object
 	updateHandler     CollectorUpdateHandler
 	tokenUpdateTicker *time.Ticker
 	doneChan          chan (bool)
 }
 
-func (cc *CollectorClient) StartPolling(interval time.Duration) {
+// Start polling a collector with the given internval
+func (cc *CollectorClient) startPolling(interval time.Duration) {
 	if cc.tokenUpdateTicker != nil {
 		return
 	}
@@ -41,7 +50,7 @@ func (cc *CollectorClient) StartPolling(interval time.Duration) {
 		for {
 			select {
 			case <-cc.tokenUpdateTicker.C:
-				cc.HandleTokenUpdates()
+				cc.handleTokenUpdates()
 			case <-cc.doneChan:
 				return
 			}
@@ -49,14 +58,20 @@ func (cc *CollectorClient) StartPolling(interval time.Duration) {
 	}()
 }
 
-func (cc *CollectorClient) StopPolling() {
+// Stop polling the collector
+func (cc *CollectorClient) stopPolling() {
+	cc.tokenUpdateTicker.Stop()
 	cc.doneChan <- true
 }
 
-func (cc *CollectorClient) HandleTokenUpdates() {
+// Main credential update loop:
+// - Check whether the existing set of credentials have expired
+// - Exec into the collector to generate a new set of credentials if needed
+// - Update the Secret(s) that store the credentials
+func (cc *CollectorClient) handleTokenUpdates() {
 	log := log.FromContext(cc.ctx)
-	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.pilotSet.Namespace))
-	shouldUpdate, err := cc.updateHandler.ShouldUpdateTokens()
+	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.resource.GetNamespace()))
+	shouldUpdate, err := cc.updateHandler.shouldUpdateTokens()
 	if err != nil {
 		log.Error(err, "Unable to determine whether to update tokens")
 		return
@@ -65,30 +80,32 @@ func (cc *CollectorClient) HandleTokenUpdates() {
 		return
 	}
 
-	glideinToken, err := execInCollector(cc.ctx, cc.pilotSet, []string{
+	glideinToken, err := execInCollector(cc.ctx, cc.resource, []string{
 		"condor_token_create", "-identity", "glidein@cluster.local", "-key", "NAMESPACE"})
-	pilotToken, err2 := execInCollector(cc.ctx, cc.pilotSet,
+	pilotToken, err2 := execInCollector(cc.ctx, cc.resource,
 		[]string{"condor_token_create", "-identity", "pilot@cluster.local", "-key", "NAMESPACE"})
 	if err := errors.Join(err, err2); err != nil {
 		log.Error(err, "Unable to generate new tokens for collector")
 		return
 	}
 
-	if err := cc.updateHandler.ApplyTokensUpdate(glideinToken.Stdout, pilotToken.Stdout); err != nil {
+	err = cc.updateHandler.applyTokensUpdate(glideinToken.Stdout, pilotToken.Stdout)
+	if err != nil {
 		log.Error(err, "unable to apply token update")
 	}
-
 }
 
-func NewCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler CollectorUpdateHandler) CollectorClient {
+func newCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) CollectorClient {
 	return CollectorClient{
 		ctx:           context.TODO(),
-		pilotSet:      pilotSet,
+		resource:      resource,
 		updateHandler: updateHandler,
 		doneChan:      make(chan bool),
 	}
 }
 
+// Static map active CollectorClients. Map from namespaced name of client resource
+// to its CollectorClient struct
 var collectorClients = make(map[string]*CollectorClient)
 
 type ExecOutput struct {
@@ -99,28 +116,28 @@ type ExecOutput struct {
 var ErrPodNotRunning = errors.New("pod not in Running state")
 
 // Utility function to run 'condor_token_create' in the Collector pod
-func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet, cmd []string) (*ExecOutput, error) {
+func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) (_ *ExecOutput, err error) {
 	log := log.FromContext(ctx)
 	cfg, err := clientConfig.GetConfig()
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	client, err := restclient.NewForConfig(cfg)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// Find the collector pod for the pilotSet based on label selector
-	pods, err := client.CoreV1().Pods(pilotSet.Namespace).List(ctx,
+	pods, err := client.CoreV1().Pods(resource.GetNamespace()).List(ctx,
 		metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("gmos.chtc.wisc.edu/app=collector, app.kubernetes.io/instance=%v", pilotSet.Name),
+			LabelSelector: "gmos.chtc.wisc.edu/app=collector",
 		})
 	if err != nil {
-		return nil, err
+		return
 	}
 	if len(pods.Items) != 1 {
-		return nil, fmt.Errorf("expected 1 collector pod for %v, found %v", pilotSet.Name, len(pods.Items))
+		return nil, fmt.Errorf("expected 1 collector pod for %v, found %v", resource.GetName(), len(pods.Items))
 	}
 	pod := pods.Items[0]
 	log.Info(fmt.Sprintf("Found pod with name: %+v", pod.Name))
@@ -130,7 +147,7 @@ func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 	}
 
 	// Exec into the pod to run condor_token_create
-	req := client.CoreV1().RESTClient().Post().Namespace(pilotSet.Namespace).
+	req := client.CoreV1().RESTClient().Post().Namespace(resource.GetNamespace()).
 		Resource("pods").Name(pod.Name).SubResource("exec").VersionedParams(&v1.PodExecOptions{
 		Command: cmd,
 		Stdout:  true,
@@ -139,33 +156,38 @@ func execInCollector(ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerP
 
 	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	outbuf := bytes.Buffer{}
 	errbuf := bytes.Buffer{}
-	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &outbuf,
 		Stderr: &errbuf,
-	}); err != nil {
-		return nil, err
+	})
+	if err != nil {
+		return
 	}
 
 	return &ExecOutput{Stdout: outbuf.String(), Stderr: errbuf.String()}, nil
 }
 
-func AddCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHandler CollectorUpdateHandler) error {
+// Register a new CollectorUpdateHandler with the Collector associated with the
+// given resource
+func addCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) error {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	if existingClient, exists := collectorClients[pilotSet.Namespace]; !exists {
-		log.Info(fmt.Sprintf("Creating new collector client for namespace %v", pilotSet.Namespace))
-		newClient := NewCollectorClient(pilotSet, updateHandler)
-		newClient.StartPolling(1 * time.Minute)
-		collectorClients[pilotSet.Namespace] = &newClient
+	namespacedName := namespacedNameFor(resource)
+
+	if existingClient, exists := collectorClients[namespacedName]; !exists {
+		log.Info(fmt.Sprintf("Creating new collector client for namespaced name %v", namespacedName))
+		newClient := newCollectorClient(resource, updateHandler)
+		newClient.startPolling(1 * time.Minute)
+		collectorClients[resource.GetNamespace()] = &newClient
 	} else {
-		log.Info(fmt.Sprintf("Collector client already exists for namespace %v, updating", pilotSet.Namespace))
-		existingClient.pilotSet = pilotSet
+		log.Info(fmt.Sprintf("Collector client already exists for namespaced name %v, updating", namespacedName))
+		existingClient.resource = resource
 		existingClient.updateHandler = updateHandler
 		return nil
 	}
@@ -173,12 +195,15 @@ func AddCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, updateHan
 	return nil
 }
 
-func RemoveCollectorClient(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+// Remove the watcher associated with the given resource
+func removeCollectorClient(resource metav1.Object) {
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
-	if existingClient, exists := collectorClients[pilotSet.Namespace]; exists {
-		log.Info(fmt.Sprintf("Removing collector client for namespace %v", pilotSet.Namespace))
-		existingClient.StopPolling()
+	namespacedName := namespacedNameFor(resource)
+
+	if existingClient, exists := collectorClients[namespacedName]; exists {
+		log.Info(fmt.Sprintf("Removing collector client for namespaced name %v", namespacedName))
+		existingClient.stopPolling()
 	}
 }
