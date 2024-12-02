@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var _ = Describe("GlideinManagerPilotSet Controller", func() {
+var _ = Describe("GlideinSet Controller", func() {
 	Context("When reconciling a GlideinSet with no upstream config", func() {
 		const resourceName = "test-unconfigured-glideinset"
 
@@ -218,7 +218,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			}
 		})
 
-		BeforeEach(func() {
+		AfterEach(func() {
 			// Cleanup logic after each test, like removing the resource instance.
 			os.Unsetenv("CLIENT_NAME")
 			resource := &gmosv1alpha1.GlideinSet{}
@@ -294,9 +294,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 				// TODO cannot figure out how to
 				tokenDir, _ := path.Split(upstreamConfig.SecretSource.Dst)
 				Expect(containerSpec.VolumeMounts[1].MountPath).To(Equal(tokenDir))
-
 			})
-
 		})
 	})
 })
