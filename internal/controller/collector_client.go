@@ -60,6 +60,7 @@ func (cc *CollectorClient) startPolling(interval time.Duration) {
 
 // Stop polling the collector
 func (cc *CollectorClient) stopPolling() {
+	cc.tokenUpdateTicker.Stop()
 	cc.doneChan <- true
 }
 
@@ -88,10 +89,10 @@ func (cc *CollectorClient) handleTokenUpdates() {
 		return
 	}
 
-	if err := cc.updateHandler.applyTokensUpdate(glideinToken.Stdout, pilotToken.Stdout); err != nil {
+	err = cc.updateHandler.applyTokensUpdate(glideinToken.Stdout, pilotToken.Stdout)
+	if err != nil {
 		log.Error(err, "unable to apply token update")
 	}
-
 }
 
 func newCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHandler) CollectorClient {
@@ -115,16 +116,16 @@ type ExecOutput struct {
 var ErrPodNotRunning = errors.New("pod not in Running state")
 
 // Utility function to run 'condor_token_create' in the Collector pod
-func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) (*ExecOutput, error) {
+func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) (_ *ExecOutput, err error) {
 	log := log.FromContext(ctx)
 	cfg, err := clientConfig.GetConfig()
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	client, err := restclient.NewForConfig(cfg)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// Find the collector pod for the pilotSet based on label selector
@@ -133,7 +134,7 @@ func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) 
 			LabelSelector: "gmos.chtc.wisc.edu/app=collector",
 		})
 	if err != nil {
-		return nil, err
+		return
 	}
 	if len(pods.Items) != 1 {
 		return nil, fmt.Errorf("expected 1 collector pod for %v, found %v", resource.GetName(), len(pods.Items))
@@ -155,16 +156,17 @@ func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) 
 
 	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	outbuf := bytes.Buffer{}
 	errbuf := bytes.Buffer{}
-	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &outbuf,
 		Stderr: &errbuf,
-	}); err != nil {
-		return nil, err
+	})
+	if err != nil {
+		return
 	}
 
 	return &ExecOutput{Stdout: outbuf.String(), Stderr: errbuf.String()}, nil

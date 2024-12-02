@@ -25,23 +25,34 @@ type ResourceCreator[T client.Object] interface {
 // 1. Check that a resource with the given name doesn't yet exist in the namespace
 // 2. Create an initial schema for the object in-memory
 // 3. Post the newly created object to k8s via the API
-func createResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, creator ResourceCreator[T]) error {
+func createResourceIfNotExists[T client.Object](
+	reconcileState *PilotSetReconcileState,
+	resourceName ResourceName,
+	resource T,
+	creator ResourceCreator[T],
+) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.nameFor(reconcileState.resource)
-	if err := reconcileState.reconciler.getClient().Get(
-		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()}, resource); err == nil {
+	err := reconcileState.reconciler.getClient().Get(
+		reconcileState.ctx,
+		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
+		resource)
+	if err == nil {
 		log.Info("Resource already exists, no action needed.")
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, creating it.")
 		resource.SetName(name)
 		resource.SetNamespace(reconcileState.resource.GetNamespace())
-		if err := creator.setResourceValue(reconcileState.reconciler, reconcileState.resource, resource); err != nil {
+		err := creator.setResourceValue(reconcileState.reconciler, reconcileState.resource, resource)
+		if err != nil {
 			log.Error(err, "Unable to set value for new resource")
 		}
-		if err := ctrl.SetControllerReference(reconcileState.resource, resource, reconcileState.reconciler.getScheme()); err != nil {
+		err = ctrl.SetControllerReference(reconcileState.resource, resource, reconcileState.reconciler.getScheme())
+		if err != nil {
 			return err
 		}
-		if err := reconcileState.reconciler.getClient().Create(reconcileState.ctx, resource); err != nil {
+		err = reconcileState.reconciler.getClient().Create(reconcileState.ctx, resource)
+		if err != nil {
 			log.Error(err, "Unable to create resource")
 			return err
 		}
@@ -58,12 +69,20 @@ func createResourceIfNotExists[T client.Object](reconcileState *PilotSetReconcil
 // 1. Fetch the object by name via the k8s API
 // 2. Modify the object's data in-memory
 // 3. Push the updated data back to k8s via the API
-func applyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T, resourceUpdater ResourceUpdater[T]) error {
+func applyUpdateToResource[T client.Object](
+	reconcileState *PilotSetReconcileState,
+	resourceName ResourceName, resource T,
+	resourceUpdater ResourceUpdater[T],
+) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.nameFor(reconcileState.resource)
 	log.Info("Applying updates to resource " + name)
-	if err := reconcileState.reconciler.getClient().Get(
-		reconcileState.ctx, types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()}, resource); err == nil {
+	err := reconcileState.reconciler.getClient().Get(
+		reconcileState.ctx,
+		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
+		resource,
+	)
+	if err == nil {
 		updated, err := resourceUpdater.updateResourceValue(reconcileState.reconciler, resource)
 		if err != nil {
 			log.Error(err, "Unable to apply update to resource value: "+name)
@@ -73,7 +92,8 @@ func applyUpdateToResource[T client.Object](reconcileState *PilotSetReconcileSta
 			log.Info("No updates needed for resource " + name)
 			return nil
 		}
-		if err := reconcileState.reconciler.getClient().Update(reconcileState.ctx, resource); err != nil {
+		err = reconcileState.reconciler.getClient().Update(reconcileState.ctx, resource)
+		if err != nil {
 			log.Error(err, "Unable to post update to resource "+name)
 			return err
 		}

@@ -48,20 +48,20 @@ func (r *GlideinSetReconciler) getScheme() *runtime.Scheme {
 
 // Reconcile the state of a GlideinSet Custom Resource in the namespace by updating
 // its associated child resources
-func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := log.FromContext(ctx)
 	log.Info("Running reconcile")
 
 	// Check the namespace for a PilotSet CRD,
 	glideinSet := &gmosv1alpha1.GlideinSet{}
 
-	if err := r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
+	if err = r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("GlideinSet resource not found. It is either deleted or not created.")
-			return ctrl.Result{}, nil
+			return result, nil
 		}
 		log.Error(err, "Failed to get GlideinSet")
-		return ctrl.Result{}, err
+		return
 	}
 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
@@ -72,51 +72,50 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			log.Error(nil, "Failed to add finalizer to GlideinSet")
 		}
 
-		if err := r.Update(ctx, glideinSet); err != nil {
+		if err = r.Update(ctx, glideinSet); err != nil {
 			log.Error(err, "Failed to update GlideinSet to add finalizer")
-			return ctrl.Result{}, err
+			return
 		}
 	}
 
 	// Check if the pilotSet is marked for deletion, remove its dependent resources if so
 	if glideinSet.GetDeletionTimestamp() != nil {
 		if !controllerutil.ContainsFinalizer(glideinSet, pilotSetFinalizer) {
-			return ctrl.Result{}, nil
+			return
 		}
 		log.Info("Running finalizer on GlideinManagerglideinSet before deletion")
 
 		finalizeGlideinSet(glideinSet)
 
 		// Refresh the Custom Resource post-finalization
-		if err := r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
+		if err = r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
 			log.Error(err, "Failed to get updated GlideinManagerglideinSet after running finalizer operations")
-			return ctrl.Result{}, err
+			return
 		}
 
 		// Remove the finalizer and update the resource
 		if !controllerutil.RemoveFinalizer(glideinSet, pilotSetFinalizer) {
 			log.Error(nil, "Failed to remove finalizer from GlideinManagerglideinSet")
 		}
-		if err := r.Update(ctx, glideinSet); err != nil {
+		if err = r.Update(ctx, glideinSet); err != nil {
 			log.Error(err, "Failed to update CRD to remove finalizer")
-			return ctrl.Result{}, err
+			return
 		}
-		return ctrl.Result{}, nil
 	}
 
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
-	if err := createResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
-		return ctrl.Result{}, err
+	if err = createResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+		return
 	}
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
-	if err := applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
+	if err = applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for GlideinSet")
-		return ctrl.Result{}, err
+		return
 	}
 
 	addGlideinManagerWatcher(glideinSet, glState)
 	addCollectorClient(glideinSet, glState)
-	return ctrl.Result{}, nil
+	return
 }
 
 // Remove the GlideinManager client and Collector client for the namespace when the associated GlideinSet
@@ -146,22 +145,26 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
 	log.Info("Creating Collector tokens secret if not exists")
-	if err := createResourceIfNotExists(psState, RNCollectorTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	err := createResourceIfNotExists(psState, RNCollectorTokens, &corev1.Secret{}, &EmptySecretCreator{})
+	if err != nil {
 		return err
 	}
 
 	log.Info("Creating Data Secret if not exists")
-	if err := createResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	err = createResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{})
+	if err != nil {
 		return err
 	}
 
 	log.Info("Creating Access Token Secret if not exists")
-	if err := createResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	err = createResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{})
+	if err != nil {
 		return err
 	}
 
 	log.Info("Creating Deployment if not exists")
-	if err := createResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{}); err != nil {
+	err = createResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{})
+	if err != nil {
 		return err
 	}
 

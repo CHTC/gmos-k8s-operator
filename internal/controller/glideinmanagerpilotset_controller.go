@@ -76,19 +76,19 @@ func (r *GlideinManagerPilotSetReconciler) getScheme() *runtime.Scheme {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
-func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := log.FromContext(ctx)
 	log.Info("Running reconcile")
 
 	pilotSet := &gmosv1alpha1.GlideinManagerPilotSet{}
 
-	if err := r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
+	if err = r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("GlideinManagerPilotSet resource not found. It is either deleted or not created.")
-			return ctrl.Result{}, nil
+			return result, nil
 		}
 		log.Error(err, "Failed to get GlideinManagerPilotSet")
-		return ctrl.Result{}, err
+		return
 	}
 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
@@ -99,42 +99,42 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 			log.Error(nil, "Failed to add finalizer to GlideinManagerPilotSet")
 		}
 
-		if err := r.Update(ctx, pilotSet); err != nil {
+		if err = r.Update(ctx, pilotSet); err != nil {
 			log.Error(err, "Failed to update CRD to add finalizer")
-			return ctrl.Result{}, err
+			return
 		}
 	}
 
 	// Check if the pilotSet is marked for deletion, remove its dependent resources if so
 	if pilotSet.GetDeletionTimestamp() != nil {
 		if !controllerutil.ContainsFinalizer(pilotSet, pilotSetFinalizer) {
-			return ctrl.Result{}, nil
+			return
 		}
 		log.Info("Running finalizer on GlideinManagerPilotSet before deletion")
 
 		finalizePilotSet(pilotSet)
 
 		// Refresh the Custom Resource post-finalization
-		if err := r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
+		if err = r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
 			log.Error(err, "Failed to get updated GlideinManagerPilotSet after running finalizer operations")
-			return ctrl.Result{}, err
+			return
 		}
 
 		// Remove the finalizer and update the resource
 		if !controllerutil.RemoveFinalizer(pilotSet, pilotSetFinalizer) {
 			log.Error(nil, "Failed to remove finalizer from GlideinManagerPilotSet")
 		}
-		if err := r.Update(ctx, pilotSet); err != nil {
+		if err = r.Update(ctx, pilotSet); err != nil {
 			log.Error(err, "Failed to update CRD to remove finalizer")
-			return ctrl.Result{}, err
+			return
 		}
-		return ctrl.Result{}, nil
+		return
 	}
 
-	if err := createResourcesForPilotSet(r, ctx, pilotSet); err != nil {
-		return ctrl.Result{}, err
+	if err = createResourcesForPilotSet(r, ctx, pilotSet); err != nil {
+		return
 	}
-	return ctrl.Result{}, nil
+	return
 }
 
 // Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
@@ -154,7 +154,7 @@ type PilotSetReconcileState struct {
 
 // Check the current state of resources in the PilotSet's namespace to determine
 // whether a new set of ID tokens need to be generated via the local collector
-func (pr *PilotSetReconcileState) shouldUpdateTokens() (bool, error) {
+func (pr *PilotSetReconcileState) shouldUpdateTokens() (shouldUpdate bool, err error) {
 	glideinSec := corev1.Secret{}
 	epSec := corev1.Secret{}
 	glideinErr := pr.reconciler.getClient().Get(pr.ctx, types.NamespacedName{Name: RNCollectorTokens.nameFor(pr.resource), Namespace: pr.resource.GetNamespace()}, &glideinSec)
@@ -166,10 +166,10 @@ func (pr *PilotSetReconcileState) shouldUpdateTokens() (bool, error) {
 				return true, nil
 			}
 		}
-		return false, nil
+		return
 	} else if apierrors.IsNotFound(glideinErr) && apierrors.IsNotFound(epErr) {
 		// Need to wait for resources to be recreated in next reconcile loop
-		return false, nil
+		return
 	} else {
 		return false, errors.Join(epErr, glideinErr)
 	}
@@ -187,17 +187,14 @@ func (pr *PilotSetReconcileState) applyGitUpdate(gitUpdate gmosClient.RepoUpdate
 	log.Info("Got repo update!")
 
 	log.Info("Updating data Secret")
-	if err := applyUpdateToResource(pr, RNData, &corev1.Secret{}, &DataSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	err := applyUpdateToResource(pr, RNData, &corev1.Secret{}, &DataSecretGitUpdater{gitUpdate: &gitUpdate})
+	if !updateErrOk(err) {
 		return err
 	}
 
-	// log.Info("Updating access token Secret")
-	// if err := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &TokenSecretGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
-	// 	return err
-	// }
-
 	log.Info("Updating Deployment")
-	if err := applyUpdateToResource(pr, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate}); !updateErrOk(err) {
+	err = applyUpdateToResource(pr, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate})
+	if !updateErrOk(err) {
 		return err
 	}
 
@@ -225,22 +222,26 @@ func createResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 
 	// Collector resources
 	log.Info("Creating Collector Signing Key if not exists")
-	if err := createResourceIfNotExists(psState, RNCollectorSigkey, &corev1.Secret{}, &CollectorSigningKeyCreator{}); err != nil {
+	err := createResourceIfNotExists(psState, RNCollectorSigkey, &corev1.Secret{}, &CollectorSigningKeyCreator{})
+	if err != nil {
 		return err
 	}
 
 	log.Info("Creating Collector ConfigMap if not exists")
-	if err := createResourceIfNotExists(psState, RNCollectorConfig, &corev1.ConfigMap{}, &CollectorConfigMapCreator{}); err != nil {
+	err = createResourceIfNotExists(psState, RNCollectorConfig, &corev1.ConfigMap{}, &CollectorConfigMapCreator{})
+	if err != nil {
 		return err
 	}
 
 	log.Info("Creating Collector Deployment if not exists")
-	if err := createResourceIfNotExists(psState, RNCollector, &appsv1.Deployment{}, &CollectorDeploymentCreator{}); err != nil {
+	err = createResourceIfNotExists(psState, RNCollector, &appsv1.Deployment{}, &CollectorDeploymentCreator{})
+	if err != nil {
 		return err
 	}
 
 	log.Info("Creating Collector Service if not exists")
-	if err := createResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{}); err != nil {
+	err = createResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{})
+	if err != nil {
 		return err
 	}
 
@@ -267,7 +268,8 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 		creator := &GlideinSetCreator{spec: &glideinSetSpec}
 		err := applyUpdateToResource(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator)
 		if apierrors.IsNotFound(err) {
-			if err := createResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator); err != nil {
+			err = createResourceIfNotExists(psState, gsResource, &gmosv1alpha1.GlideinSet{}, creator)
+			if err != nil {
 				return err
 			}
 		}
@@ -276,8 +278,11 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 	// Remove stale GlideinSets
 	glideinSetList := gmosv1alpha1.GlideinSetList{}
 	psState.reconciler.getClient().List(
-		psState.ctx, &glideinSetList,
-		client.InNamespace(pilotSet.Namespace), client.HasLabels([]string{"app.kubernetes.io/instance=" + pilotSet.Name}))
+		psState.ctx,
+		&glideinSetList,
+		client.InNamespace(pilotSet.Namespace),
+		client.HasLabels([]string{"app.kubernetes.io/instance=" + pilotSet.Name}),
+	)
 
 	for _, glideinSet := range glideinSetList.Items {
 		log.Info(fmt.Sprintf("Found GlideinSet with name %v via API call!", glideinSet.Name))
@@ -291,7 +296,8 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 
 		if outdated {
 			log.Info(fmt.Sprintf("GlideinSet %v has been removed, deleting it.", glideinSet.Name))
-			if err := psState.reconciler.getClient().Delete(psState.ctx, &glideinSet); err != nil {
+			err := psState.reconciler.getClient().Delete(psState.ctx, &glideinSet)
+			if err != nil {
 				log.Error(err, "Unable to delete stale GlideinSet")
 				return err
 			}

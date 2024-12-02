@@ -184,7 +184,8 @@ func (p *GlideinManagerPoller) checkForSecretUpdates() {
 		}
 
 		log.Info(fmt.Sprintf("Updating namespace %v to secret %v, version %v", namespace, nextSecret.Name, nextSecret.Version))
-		if err := syncState.updateHandler.applySecretUpdate(syncState.currentConfig.SecretSource, nextSecret); err != nil {
+		err = syncState.updateHandler.applySecretUpdate(syncState.currentConfig.SecretSource, nextSecret)
+		if err != nil {
 			log.Error(err, fmt.Sprintf("Error occurred while handling secret update for namespace %v", namespace))
 		} else {
 			syncState.currentSecretVersion = nextSecret.Version
