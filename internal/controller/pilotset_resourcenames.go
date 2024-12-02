@@ -19,16 +19,16 @@ const (
 
 // Util function to prefix a resource name with the name of
 // its parent
-func (rn ResourceName) NameFor(obj metav1.Object) string {
+func (rn ResourceName) nameFor(obj metav1.Object) string {
 	return obj.GetName() + string(rn)
 }
 
 // Concatinate a resource's namespace to its name for a unique key
-func NamespacedName(namespace string, name string) string {
+func namespacedName(namespace string, name string) string {
 	// This is just used for dictionary keys and doesn't need to be a valid k8s object name
 	return namespace + "/" + name
 }
 
-func NamespacedNameFor(obj metav1.Object) string {
-	return NamespacedName(obj.GetNamespace(), obj.GetName())
+func namespacedNameFor(obj metav1.Object) string {
+	return namespacedName(obj.GetNamespace(), obj.GetName())
 }

@@ -80,22 +80,22 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			deploymentNamespacedName := types.NamespacedName{
-				Name:      RNBase.NameFor(&resource),
+				Name:      RNBase.nameFor(&resource),
 				Namespace: "default",
 			}
 
 			collectorTokensNamespacedName := types.NamespacedName{
-				Name:      RNCollectorTokens.NameFor(&resource),
+				Name:      RNCollectorTokens.nameFor(&resource),
 				Namespace: "default",
 			}
 
 			dataNamespacedName := types.NamespacedName{
-				Name:      RNData.NameFor(&resource),
+				Name:      RNData.nameFor(&resource),
 				Namespace: "default",
 			}
 
 			accessTokenNamespacedName := types.NamespacedName{
-				Name:      RNTokens.NameFor(&resource),
+				Name:      RNTokens.nameFor(&resource),
 				Namespace: "default",
 			}
 
@@ -127,7 +127,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 
 			Expect(activeGlideinManagerPollers).Should(HaveKey(glideinManagerUrl))
 			myPoller := activeGlideinManagerPollers[glideinManagerUrl]
-			Expect(myPoller.HasUpdateHandlerForResource(NamespacedNameFor(&resource))).Should(BeTrue())
+			Expect(myPoller.hasUpdateHandlerForResource(namespacedNameFor(&resource))).Should(BeTrue())
 		})
 
 		It("Should register a collector client", func() {
@@ -135,7 +135,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, &resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			namespacedName := NamespacedNameFor(&resource)
+			namespacedName := namespacedNameFor(&resource)
 			Expect(collectorClients).Should(HaveKey(namespacedName))
 		})
 
@@ -148,7 +148,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
-				namespacedName := NamespacedNameFor(&resource)
+				namespacedName := namespacedNameFor(&resource)
 				Expect(collectorClients).ShouldNot(HaveKey(namespacedName))
 				Expect(activeGlideinManagerPollers).ShouldNot(HaveKey(glideinManagerUrl))
 			})
@@ -249,7 +249,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				deploymentNamespacedName := types.NamespacedName{
-					Name:      RNBase.NameFor(&resource),
+					Name:      RNBase.nameFor(&resource),
 					Namespace: "default",
 				}
 
@@ -281,7 +281,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				deploymentNamespacedName := types.NamespacedName{
-					Name:      RNBase.NameFor(&resource),
+					Name:      RNBase.nameFor(&resource),
 					Namespace: "default",
 				}
 

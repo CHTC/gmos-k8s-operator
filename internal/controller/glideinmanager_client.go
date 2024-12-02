@@ -42,7 +42,7 @@ type GlideinManagerPoller struct {
 }
 
 // Create a new GlideinManagerPoler that polls from the given upstream Git repo
-func NewGlidenManagerPoller(clientName string, managerUrl string) *GlideinManagerPoller {
+func newGlidenManagerPoller(clientName string, managerUrl string) *GlideinManagerPoller {
 	client := &gmosClient.GlideinManagerClient{
 		HostName:   clientName,
 		ManagerUrl: managerUrl,
@@ -58,7 +58,7 @@ func NewGlidenManagerPoller(clientName string, managerUrl string) *GlideinManage
 }
 
 // Start polling a Glidein Manager Git repo at the given interval
-func (p *GlideinManagerPoller) StartPolling(pollInterval time.Duration, refreshInterval time.Duration) {
+func (p *GlideinManagerPoller) startPolling(pollInterval time.Duration, refreshInterval time.Duration) {
 	if p.dataUpdateTicker != nil || p.refreshTicker != nil {
 		return
 	}
@@ -69,8 +69,8 @@ func (p *GlideinManagerPoller) StartPolling(pollInterval time.Duration, refreshI
 			case <-p.doneChan:
 				return
 			case <-p.dataUpdateTicker.C:
-				p.CheckForGitUpdates()
-				p.CheckForSecretUpdates()
+				p.checkForGitUpdates()
+				p.checkForSecretUpdates()
 			}
 		}
 	}()
@@ -82,7 +82,7 @@ func (p *GlideinManagerPoller) StartPolling(pollInterval time.Duration, refreshI
 			case <-p.doneChan:
 				return
 			case <-p.refreshTicker.C:
-				if err := p.DoHandshakeWithRetry(15, 5*time.Second); err != nil {
+				if err := p.doHandshakeWithRetry(15, 5*time.Second); err != nil {
 					return
 				}
 			}
@@ -91,14 +91,14 @@ func (p *GlideinManagerPoller) StartPolling(pollInterval time.Duration, refreshI
 }
 
 // Stop polling the upstream Git repo once all watchers have been removed
-func (p *GlideinManagerPoller) StopPolling() {
+func (p *GlideinManagerPoller) stopPolling() {
 	p.dataUpdateTicker.Stop()
 	p.refreshTicker.Stop()
 	p.doneChan <- true
 }
 
 // Check whether a GlideinManagerUpdateHandler has already been registered for the given resource
-func (p *GlideinManagerPoller) HasUpdateHandlerForResource(resource string) bool {
+func (p *GlideinManagerPoller) hasUpdateHandlerForResource(resource string) bool {
 	_, exists := p.updateHandlers[resource]
 	return exists
 }
@@ -112,7 +112,7 @@ func (p *GlideinManagerPoller) setUpdateHandler(resource string, updateHandler G
 // - Check whether the current sync state of the resource is behind the latest Git commit
 // - If so, read the manifest yaml for the resource's namespace from the on-disk copy of the Git repo
 // - Then, update the associated Deployment and Secrets based on changes to the manifest
-func (p *GlideinManagerPoller) CheckForGitUpdates() {
+func (p *GlideinManagerPoller) checkForGitUpdates() {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Checking for git updates from %v", p.client.ManagerUrl))
 	repoUpdate, err := p.client.SyncRepo()
@@ -148,7 +148,7 @@ const MAX_LABEL_LENGTH = 63
 // - Check whether the latest version of the credential in the Secret is behind the latest upstream Secret version
 // - If so, read the new Secret from the upstream
 // - Then, update the associated Secret(s) based on the new Secret value
-func (p *GlideinManagerPoller) CheckForSecretUpdates() {
+func (p *GlideinManagerPoller) checkForSecretUpdates() {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
 	for _, updateHandler := range p.updateHandlers {
@@ -197,7 +197,7 @@ func (p *GlideinManagerPoller) CheckForSecretUpdates() {
 
 // Perform the Auth handshake with the upstream Glidein Manager Git repo,
 // implementing custom retry logic (just keep trying it over and over again until it works)
-func (p *GlideinManagerPoller) DoHandshakeWithRetry(retries int, delay time.Duration) error {
+func (p *GlideinManagerPoller) doHandshakeWithRetry(retries int, delay time.Duration) error {
 	log := log.FromContext(context.TODO())
 	log.Info("Doing handshake with Glidein Manager Object Server")
 	errs := []error{}
@@ -229,23 +229,23 @@ func addGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 		return errors.New("env var CLIENT_NAME missing")
 	}
 
-	namespacedName := NamespacedNameFor(glideinSet)
+	namespacedName := namespacedNameFor(glideinSet)
 	if existingPoller, exists := activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl]; !exists {
 		log.Info(fmt.Sprintf("No existing watchers for manager %v. Creating for namespace %v", glideinSet.Spec.GlideinManagerUrl, glideinSet.Namespace))
-		poller := NewGlidenManagerPoller(clientName, glideinSet.Spec.GlideinManagerUrl)
+		poller := newGlidenManagerPoller(clientName, glideinSet.Spec.GlideinManagerUrl)
 		poller.setUpdateHandler(namespacedName, updateHandler)
 		activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl] = poller
 		go func() {
-			if err := poller.DoHandshakeWithRetry(15, 5*time.Second); err != nil {
+			if err := poller.doHandshakeWithRetry(15, 5*time.Second); err != nil {
 				log.Error(err, "Unable to complete handshake with GMOS")
 				return
 			}
-			poller.StartPolling(1*time.Minute, 1*time.Hour)
+			poller.startPolling(1*time.Minute, 1*time.Hour)
 		}()
 
-	} else if !existingPoller.HasUpdateHandlerForResource(namespacedName) {
+	} else if !existingPoller.hasUpdateHandlerForResource(namespacedName) {
 		// remove the client from other namespaces
-		RemoveGlideinManagerWatcher(glideinSet)
+		removeGlideinManagerWatcher(glideinSet)
 		existingPoller.setUpdateHandler(namespacedName, updateHandler)
 	}
 	return nil
@@ -253,14 +253,14 @@ func addGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 
 // Remove the Glidein Manager watcher for a single GlideinSet resource. If no watchers are
 // remaining for the Git repo after the removal, remove the poller as well.
-func RemoveGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
+func removeGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
 	log := log.FromContext(context.TODO())
 
-	namespacedName := NamespacedNameFor(glideinSet)
+	namespacedName := namespacedNameFor(glideinSet)
 	log.Info(fmt.Sprintf("Removing glidein manager watcher from namespaced name %v", namespacedName))
 	var toDelete *GlideinManagerPoller = nil
 	for _, poller := range activeGlideinManagerPollers {
-		if poller.HasUpdateHandlerForResource(namespacedName) {
+		if poller.hasUpdateHandlerForResource(namespacedName) {
 			log.Info(fmt.Sprintf("consumer removed for manager %v", poller.client.ManagerUrl))
 			delete(poller.updateHandlers, namespacedName)
 			if len(poller.updateHandlers) == 0 {
@@ -272,6 +272,6 @@ func RemoveGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
 	if toDelete != nil {
 		log.Info(fmt.Sprintf("Last consumer removed for manager %v. Removing watcher.", toDelete.client.ManagerUrl))
 		delete(activeGlideinManagerPollers, toDelete.client.ManagerUrl)
-		toDelete.StopPolling()
+		toDelete.stopPolling()
 	}
 }
