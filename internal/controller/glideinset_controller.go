@@ -38,11 +38,11 @@ type GlideinSetReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-func (r *GlideinSetReconciler) GetClient() client.Client {
+func (r *GlideinSetReconciler) getClient() client.Client {
 	return r.Client
 }
 
-func (r *GlideinSetReconciler) GetScheme() *runtime.Scheme {
+func (r *GlideinSetReconciler) getScheme() *runtime.Scheme {
 	return r.Scheme
 }
 
@@ -85,7 +85,7 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		log.Info("Running finalizer on GlideinManagerglideinSet before deletion")
 
-		FinalizeGlideinSet(glideinSet)
+		finalizeGlideinSet(glideinSet)
 
 		// Refresh the Custom Resource post-finalization
 		if err := r.Get(ctx, req.NamespacedName, glideinSet); err != nil {
@@ -105,33 +105,33 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Add the deployment for the pilotSet if it doesn't already exist, or update it if it does
-	if err := CreateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+	if err := createResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
 		return ctrl.Result{}, err
 	}
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
-	if err := ApplyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
+	if err := applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
 		log.Error(err, "Unable to update Deployment for GlideinSet")
 		return ctrl.Result{}, err
 	}
 
-	AddGlideinManagerWatcher(glideinSet, glState)
-	AddCollectorClient(glideinSet, glState)
+	addGlideinManagerWatcher(glideinSet, glState)
+	addCollectorClient(glideinSet, glState)
 	return ctrl.Result{}, nil
 }
 
 // Remove the GlideinManager client and Collector client for the namespace when the associated GlideinSet
 // custom resource is deleted
-func FinalizeGlideinSet(glideinSet *gmosv1alpha1.GlideinSet) {
-	RemoveGlideinManagerWatcher(glideinSet)
-	RemoveCollectorClient(glideinSet)
+func finalizeGlideinSet(glideinSet *gmosv1alpha1.GlideinSet) {
+	removeGlideinManagerWatcher(glideinSet)
+	removeCollectorClient(glideinSet)
 }
 
 // Place a new set of auth tokens from the local collector into Secrets in the namespace
 // A separate set of tokens are generated for the Glidein itself and the EP in the glidein
-func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotToken string) error {
+func (pr *PilotSetReconcileState) applyTokensUpdate(glindeinToken string, pilotToken string) error {
 	// TODO this occassionally results in the error "the object has been modified; please apply your changes to the latest version and try again"
-	err := ApplyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
-	err2 := ApplyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
+	err := applyUpdateToResource(pr, RNCollectorTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: glindeinToken})
+	err2 := applyUpdateToResource(pr, RNTokens, &corev1.Secret{}, &CollectorTokenSecretUpdater{token: pilotToken})
 	return errors.Join(err, err2)
 }
 
@@ -140,28 +140,28 @@ func (pr *PilotSetReconcileState) ApplyTokensUpdate(glindeinToken string, pilotT
 // - Secret containing data files from the upstream Git repo
 // - Secret containing external Collector access tokens provided by the Glidein Manager
 // - Empty deployment with volume mounts for the above secrets
-func CreateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSet) error {
+func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSet) error {
 	log := log.FromContext(ctx)
 	log.Info("Got new value for GlideinSet custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
 	log.Info("Creating Collector tokens secret if not exists")
-	if err := CreateResourceIfNotExists(psState, RNCollectorTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	if err := createResourceIfNotExists(psState, RNCollectorTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Data Secret if not exists")
-	if err := CreateResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	if err := createResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Access Token Secret if not exists")
-	if err := CreateResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
+	if err := createResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{}); err != nil {
 		return err
 	}
 
 	log.Info("Creating Deployment if not exists")
-	if err := CreateResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{}); err != nil {
+	if err := createResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{}); err != nil {
 		return err
 	}
 

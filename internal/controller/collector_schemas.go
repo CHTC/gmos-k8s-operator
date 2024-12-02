@@ -15,7 +15,7 @@ import (
 type CollectorSigningKeyCreator struct {
 }
 
-func (cc *CollectorSigningKeyCreator) SetResourceValue(
+func (cc *CollectorSigningKeyCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, secret *corev1.Secret) error {
 	keyLen := 256
 	b := make([]byte, keyLen)
@@ -33,7 +33,7 @@ func (cc *CollectorSigningKeyCreator) SetResourceValue(
 type CollectorConfigMapCreator struct {
 }
 
-func (du *CollectorConfigMapCreator) SetResourceValue(
+func (du *CollectorConfigMapCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, config *corev1.ConfigMap) error {
 	config.Data = map[string]string{
 		"05-daemon.config": "DAEMON_LIST = COLLECTOR",
@@ -48,7 +48,7 @@ func (du *CollectorConfigMapCreator) SetResourceValue(
 type CollectorDeploymentCreator struct {
 }
 
-func (du *CollectorDeploymentCreator) SetResourceValue(
+func (du *CollectorDeploymentCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	labelsMap["gmos.chtc.wisc.edu/app"] = "collector"
@@ -98,7 +98,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: RNCollectorConfig.NameFor(resource),
+								Name: RNCollectorConfig.nameFor(resource),
 							},
 						},
 					},
@@ -106,7 +106,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 					Name: "collector-sigkey-staging",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: RNCollectorSigkey.NameFor(resource),
+							SecretName: RNCollectorSigkey.nameFor(resource),
 						},
 					},
 				}, {
@@ -127,7 +127,7 @@ func (du *CollectorDeploymentCreator) SetResourceValue(
 type CollectorServiceCreator struct {
 }
 
-func (du *CollectorServiceCreator) SetResourceValue(
+func (du *CollectorServiceCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, svc *corev1.Service) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	svc.Labels = labelsMap
@@ -156,7 +156,7 @@ type CollectorTokenSecretUpdater struct {
 }
 
 // Set the collector.tkn
-func (ct *CollectorTokenSecretUpdater) UpdateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
+func (ct *CollectorTokenSecretUpdater) updateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
 	sec.StringData = map[string]string{
 		"collector.tkn": ct.token,
 	}

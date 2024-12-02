@@ -95,15 +95,15 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			collectorNamespacedName := types.NamespacedName{
-				Name:      RNCollector.NameFor(resource),
+				Name:      RNCollector.nameFor(resource),
 				Namespace: resource.GetNamespace(),
 			}
 			collectorConfigNamespacedName := types.NamespacedName{
-				Name:      RNCollectorConfig.NameFor(resource),
+				Name:      RNCollectorConfig.nameFor(resource),
 				Namespace: resource.GetNamespace(),
 			}
 			collectorSigKeyNamespacedName := types.NamespacedName{
-				Name:      RNCollectorSigkey.NameFor(resource),
+				Name:      RNCollectorSigkey.nameFor(resource),
 				Namespace: resource.GetNamespace(),
 			}
 
