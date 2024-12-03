@@ -92,8 +92,12 @@ func (p *GlideinManagerPoller) startPolling(pollInterval time.Duration, refreshI
 
 // Stop polling the upstream Git repo once all watchers have been removed
 func (p *GlideinManagerPoller) stopPolling() {
-	p.dataUpdateTicker.Stop()
-	p.refreshTicker.Stop()
+	if p.dataUpdateTicker != nil {
+		p.dataUpdateTicker.Stop()
+	}
+	if p.refreshTicker != nil {
+		p.refreshTicker.Stop()
+	}
 	p.doneChan <- true
 }
 

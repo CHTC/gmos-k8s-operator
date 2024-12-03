@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"path"
 
@@ -9,6 +10,7 @@ import (
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,7 +34,7 @@ manifests:
     dst: /mnt/glidein-data
   secretSource:
     secretName: sample-token.tkn
-    dst: /etc/sample-tokens/
+    dst: /etc/sample-tokens/sample-token.tkn
 `
 const sampleConfig = `
 - name: bob
@@ -45,7 +47,7 @@ func makeTestSourceData(tempDir string) error {
 		return err
 	}
 
-	configPth := path.Join(tempDir, "dev")
+	configPth := path.Join(tempDir, "dev", "sample.cfg")
 	configParent, _ := path.Split(configPth)
 	if err := os.MkdirAll(configParent, 0755); err != nil {
 		return err
@@ -58,7 +60,7 @@ func makeTestSourceData(tempDir string) error {
 	return nil
 }
 
-var _ = Describe("Glidein Manager Watcher Test", Focus, func() {
+var _ = Describe("Glidein Manager Watcher Test", Ordered, Focus, func() {
 	Context("When registering a GlideinSet as a Glidein Manager Watcher", func() {
 		const resourceName = "test-watcher-glideinset"
 
@@ -72,7 +74,19 @@ var _ = Describe("Glidein Manager Watcher Test", Focus, func() {
 		const glideinManagerUrl = "localhost:10010"
 		var tempDir string
 
-		BeforeEach(func() {
+		getMyUpdateHandler := func() GlideinManagerUpdateHandler {
+			resource := gmosv1alpha1.GlideinSet{}
+			err := k8sClient.Get(ctx, typeNamespacedName, &resource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(activeGlideinManagerPollers).Should(HaveKey(glideinManagerUrl))
+			myPoller := activeGlideinManagerPollers[glideinManagerUrl]
+			Expect(myPoller.hasUpdateHandlerForResource(namespacedNameFor(&resource))).Should(BeTrue())
+
+			handlerKey := namespacedNameFor(&resource)
+			return myPoller.updateHandlers[handlerKey]
+		}
+
+		BeforeAll(func() {
 			By("creating the custom resource for the Kind GlideinManagerPilotSet with no GlideinSets")
 			os.Setenv("CLIENT_NAME", "localhost:8080")
 			tempDir = GinkgoT().TempDir()
@@ -96,7 +110,7 @@ var _ = Describe("Glidein Manager Watcher Test", Focus, func() {
 			}
 		})
 
-		AfterEach(func() {
+		AfterAll(func() {
 			// Cleanup logic after each test, like removing the resource instance.
 			os.Unsetenv("CLIENT_NAME")
 			resource := &gmosv1alpha1.GlideinSet{}
@@ -123,22 +137,13 @@ var _ = Describe("Glidein Manager Watcher Test", Focus, func() {
 		It("Should update the custom resource based on the manifest file", func() {
 			// TODO: Scaffolding a functioning glidein manager in the test framework is quite
 			// difficult. For starters, just check that a client is registered.
-			resource := gmosv1alpha1.GlideinSet{}
-			err := k8sClient.Get(ctx, typeNamespacedName, &resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(activeGlideinManagerPollers).Should(HaveKey(glideinManagerUrl))
-			myPoller := activeGlideinManagerPollers[glideinManagerUrl]
-			Expect(myPoller.hasUpdateHandlerForResource(namespacedNameFor(&resource))).Should(BeTrue())
-
+			handler := getMyUpdateHandler()
 			repoUpdate := client.RepoUpdate{
 				PreviousCommit: "", // assume no previous commit
 				CurrentCommit:  "1",
 				Path:           tempDir,
 			}
 
-			handlerKey := namespacedNameFor(&resource)
-			handler := myPoller.updateHandlers[handlerKey]
 			By("Retrieving the current applied commit version")
 			currentUpdate, err := handler.getGitSyncState()
 			Expect(err).NotTo(HaveOccurred())
@@ -162,7 +167,86 @@ var _ = Describe("Glidein Manager Watcher Test", Focus, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(currentUpdate.Image).To(Equal(manifest.Image))
+			Expect(currentUpdate.Command).To(Equal(manifest.Command))
+			Expect(currentUpdate.Env).To(Equal(manifest.Env))
+			Expect(currentUpdate.Security).To(Equal(manifest.Security))
+			Expect(currentUpdate.Volume).To(Equal(manifest.Volume))
+			Expect(currentUpdate.SecretSource).To(Equal(manifest.SecretSource))
 
+		})
+
+		It("Should update a secret with the value of a token specified by the manifest file", func() {
+			handler := getMyUpdateHandler()
+
+			secVal := "hello, world!"
+			secretUpdate := client.SecretValue{
+				Name:    "sample-token.tkn",
+				Version: "1",
+				Value:   base64.StdEncoding.EncodeToString([]byte(secVal)),
+			}
+			secretSource := gmosv1alpha1.PilotSetSecretSource{
+				SecretName: "sample-token.tkn",
+				Dst:        "/etc/sample-tokens/sample-token.tkn",
+			}
+
+			By("Retrieving the current applied secret version")
+			ver, err := handler.getSecretSyncState()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ver).To(Equal(""))
+
+			By("Updating the secret with a new version")
+			err = handler.applySecretUpdate(secretSource, secretUpdate)
+			Expect(err).NotTo(HaveOccurred())
+
+			ver, err = handler.getSecretSyncState()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ver).To(Equal(secretUpdate.Version))
+
+			By("Checking that the secret was updated")
+			secName := types.NamespacedName{
+				Name:      resourceName + string(RNTokens),
+				Namespace: "default",
+			}
+			secret := corev1.Secret{}
+			err = k8sClient.Get(ctx, secName, &secret)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(secret.Data).Should(HaveKey(secretSource.SecretName))
+			Expect(secret.Data[secretSource.SecretName]).To(Equal([]byte(secVal)))
+		})
+
+		It("Should update a secret with the value of a config file specified by the manifest file", func() {
+			handler := getMyUpdateHandler()
+			repoUpdate := client.RepoUpdate{
+				PreviousCommit: "", // assume no previous commit
+				CurrentCommit:  "1",
+				Path:           tempDir,
+			}
+
+			By("Applying the git update")
+			err := handler.applyGitUpdate(repoUpdate)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Re-reconciling the resource")
+			controllerReconciler := &GlideinSetReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				secName := types.NamespacedName{
+					Name:      resourceName + string(RNData),
+					Namespace: "default",
+				}
+				secret := corev1.Secret{}
+				err = k8sClient.Get(ctx, secName, &secret)
+				Expect(secret.Data).Should(HaveKey("sample.cfg"))
+				Expect(secret.Data["sample.cfg"]).To(Equal([]byte(sampleConfig)))
+			})
 		})
 	})
 })

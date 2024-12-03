@@ -60,7 +60,9 @@ func (cc *CollectorClient) startPolling(interval time.Duration) {
 
 // Stop polling the collector
 func (cc *CollectorClient) stopPolling() {
-	cc.tokenUpdateTicker.Stop()
+	if cc.tokenUpdateTicker != nil {
+		cc.tokenUpdateTicker.Stop()
+	}
 	cc.doneChan <- true
 }
 
