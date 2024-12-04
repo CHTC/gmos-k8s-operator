@@ -115,22 +115,22 @@ func labelsForPilotSet(name string) map[string]string {
 	}
 }
 
-func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string) (gmosv1alpha1.PilotSetNamespaceConfig, error) {
+func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string) (config gmosv1alpha1.PilotSetNamespaceConfig, err error) {
 	manifest := &PilotSetManifiest{}
 	data, err := os.ReadFile(filepath.Join(gitUpdate.Path, "glidein-manifest.yaml"))
 	if err != nil {
-		return gmosv1alpha1.PilotSetNamespaceConfig{}, err
+		return
 	}
 
-	if err := yaml.Unmarshal(data, manifest); err != nil {
-		return gmosv1alpha1.PilotSetNamespaceConfig{}, err
+	if err = yaml.Unmarshal(data, manifest); err != nil {
+		return
 	}
 	for _, config := range manifest.Manifests {
 		if config.Namespace == namespace {
 			return config, nil
 		}
 	}
-	return gmosv1alpha1.PilotSetNamespaceConfig{}, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
+	return config, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
 }
 
 // ResourceUpdater implementation that updates a Deployment based on changes
