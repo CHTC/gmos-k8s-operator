@@ -60,7 +60,7 @@ func makeTestSourceData(tempDir string) error {
 	return nil
 }
 
-var _ = Describe("Glidein Manager Watcher Test", Ordered, Focus, func() {
+var _ = Describe("Glidein Manager Watcher Test", Ordered, func() {
 	Context("When registering a GlideinSet as a Glidein Manager Watcher", func() {
 		const resourceName = "test-watcher-glideinset"
 

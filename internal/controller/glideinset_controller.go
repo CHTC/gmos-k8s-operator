@@ -105,24 +105,24 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Add the deployment and secrets for the pilotSet if it doesn't already exist
-	if err := createResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
-		return ctrl.Result{}, err
+	if err = createResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+		return
 	}
 
 	// Update the deployment and git-driven secrets for the pilotSet
-	if err := updateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
-		return ctrl.Result{}, err
+	if err = updateResourcesForGlideinSet(r, ctx, glideinSet); err != nil {
+		return
 	}
 
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
-	if err := addGlideinManagerWatcher(glideinSet, glState); err != nil {
-		return ctrl.Result{}, err
+	if err = addGlideinManagerWatcher(glideinSet, glState); err != nil {
+		return
 	}
-	if err := addCollectorClient(glideinSet, glState); err != nil {
-		return ctrl.Result{}, err
+	if err = addCollectorClient(glideinSet, glState); err != nil {
+		return
 	}
 
-	return ctrl.Result{}, nil
+	return
 }
 
 // Remove the GlideinManager client and Collector client for the namespace when the associated GlideinSet
