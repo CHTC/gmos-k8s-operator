@@ -73,12 +73,12 @@ func getPrometheusConfig(resource metav1.Object, monitoring v1alpha1.PrometheusM
 	}
 	configVars := PrometheusConfigTemplate{
 		Namespace:      resource.GetNamespace(),
-		ResourceName:   RNBase.NameFor(resource),
+		ResourceName:   RNBase.nameFor(resource),
 		ServiceAccount: monitoring.ServiceAccount,
 
-		PushGateway:     RNPrometheusPushgateway.NameFor(resource),
+		PushGateway:     RNPrometheusPushgateway.nameFor(resource),
 		PushGatewayPort: PUSHGATEWAY_PORT,
-		Collector:       RNCollector.NameFor(resource),
+		Collector:       RNCollector.nameFor(resource),
 		CollectorPort:   9618, // TODO
 	}
 	var buf bytes.Buffer
@@ -92,7 +92,7 @@ type PrometheusConfigMapEditor struct {
 	pilotSet *v1alpha1.GlideinManagerPilotSet
 }
 
-func (pe *PrometheusConfigMapEditor) SetResourceValue(
+func (pe *PrometheusConfigMapEditor) setResourceValue(
 	r Reconciler, resource metav1.Object, config *corev1.ConfigMap) error {
 
 	configYaml, err := getPrometheusConfig(pe.pilotSet, pe.pilotSet.Spec.Prometheus)
@@ -105,7 +105,7 @@ func (pe *PrometheusConfigMapEditor) SetResourceValue(
 	return nil
 }
 
-func (pe *PrometheusConfigMapEditor) UpdateResourceValue(r Reconciler, config *corev1.ConfigMap) (bool, error) {
+func (pe *PrometheusConfigMapEditor) updateResourceValue(r Reconciler, config *corev1.ConfigMap) (bool, error) {
 	configYaml, err := getPrometheusConfig(pe.pilotSet, pe.pilotSet.Spec.Prometheus)
 	if err != nil {
 		return false, err
@@ -121,7 +121,7 @@ type PrometheusDeploymentEditor struct {
 	monitoring v1alpha1.PrometheusMonitoringSpec
 }
 
-func (pe *PrometheusDeploymentEditor) SetResourceValue(
+func (pe *PrometheusDeploymentEditor) setResourceValue(
 	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	labelsMap["gmos.chtc.wisc.edu/app"] = PROMETHEUS
@@ -168,7 +168,7 @@ func (pe *PrometheusDeploymentEditor) SetResourceValue(
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: RNPrometheus.NameFor(resource),
+								Name: RNPrometheus.nameFor(resource),
 							},
 						},
 					},
@@ -184,7 +184,7 @@ func (pe *PrometheusDeploymentEditor) SetResourceValue(
 	return nil
 }
 
-func (pu *PrometheusDeploymentEditor) UpdateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
+func (pu *PrometheusDeploymentEditor) updateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
 	volumeSource := pu.monitoring.StorageVolume
 	if volumeSource == nil {
 		volumeSource = &corev1.VolumeSource{
@@ -199,7 +199,7 @@ func (pu *PrometheusDeploymentEditor) UpdateResourceValue(r Reconciler, dep *app
 type PrometheusServiceCreator struct {
 }
 
-func (pc *PrometheusServiceCreator) SetResourceValue(
+func (pc *PrometheusServiceCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, svc *corev1.Service) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	svc.Labels = labelsMap
@@ -222,7 +222,7 @@ func (pc *PrometheusServiceCreator) SetResourceValue(
 type PrometheusPushgatewayDeploymentCreator struct {
 }
 
-func (pc *PrometheusPushgatewayDeploymentCreator) SetResourceValue(
+func (pc *PrometheusPushgatewayDeploymentCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	labelsMap["gmos.chtc.wisc.edu/app"] = PUSHGATEWAY
@@ -252,7 +252,7 @@ func (pc *PrometheusPushgatewayDeploymentCreator) SetResourceValue(
 type PrometheusPushgatewayServiceCreator struct {
 }
 
-func (pc *PrometheusPushgatewayServiceCreator) SetResourceValue(
+func (pc *PrometheusPushgatewayServiceCreator) setResourceValue(
 	r Reconciler, resource metav1.Object, svc *corev1.Service) error {
 	labelsMap := labelsForPilotSet(resource.GetName())
 	svc.Labels = labelsMap
