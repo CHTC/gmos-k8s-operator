@@ -98,7 +98,9 @@ func (p *GlideinManagerPoller) stopPolling() {
 	if p.refreshTicker != nil {
 		p.refreshTicker.Stop()
 	}
-	p.doneChan <- true
+	if p.refreshTicker != nil || p.dataUpdateTicker != nil {
+		p.doneChan <- true
+	}
 }
 
 // Check whether a GlideinManagerUpdateHandler has already been registered for the given resource

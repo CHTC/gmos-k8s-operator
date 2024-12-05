@@ -51,6 +51,10 @@ spec:
                       description: glideinManagerUrl is the url of the glidein manager
                         from which to pull config for this set of pilots.
                       type: string
+                    localCollectorUrl:
+                      description: localCollectorURL is the url of the htcondor collector
+                        set up by the operator in the same namespace as the glideins
+                      type: string
                     name:
                       description: Name of this glidein deployment
                       type: string

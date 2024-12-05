@@ -102,6 +102,7 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			log.Error(err, "Failed to update CRD to remove finalizer")
 			return
 		}
+		return
 	}
 
 	// Add the deployment and secrets for the pilotSet if it doesn't already exist
@@ -241,7 +242,8 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	}
 
 	log.Info("Updating Deployment with changes to RemoteManifest")
-	err = applyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest})
+	updater := &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest, collectorUrl: glideinSet.Spec.LocalCollectorUrl}
+	err = applyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, updater)
 	if !updateErrOk(err) {
 		log.Error(err, "Unable to update Deployment from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
 		return err

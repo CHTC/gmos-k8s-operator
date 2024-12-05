@@ -237,16 +237,14 @@ var _ = Describe("Glidein Manager Watcher Test", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(func(g Gomega) {
-				secName := types.NamespacedName{
-					Name:      resourceName + string(RNData),
-					Namespace: "default",
-				}
-				secret := corev1.Secret{}
-				err = k8sClient.Get(ctx, secName, &secret)
-				Expect(secret.Data).Should(HaveKey("sample.cfg"))
-				Expect(secret.Data["sample.cfg"]).To(Equal([]byte(sampleConfig)))
-			})
+			secName := types.NamespacedName{
+				Name:      resourceName + string(RNData),
+				Namespace: "default",
+			}
+			secret := corev1.Secret{}
+			err = k8sClient.Get(ctx, secName, &secret)
+			Expect(secret.Data).Should(HaveKey("sample.cfg"))
+			Expect(secret.Data["sample.cfg"]).To(Equal([]byte(sampleConfig)))
 		})
 	})
 })

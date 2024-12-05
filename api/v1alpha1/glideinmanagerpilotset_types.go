@@ -64,6 +64,10 @@ type GlideinSetSpec struct {
 	// set of pilots.
 	GlideinManagerUrl string `json:"glideinManagerUrl,omitempty"`
 
+	// localCollectorURL is the url of the htcondor collector set up by the operator
+	// in the same namespace as the glideins
+	LocalCollectorUrl string `json:"localCollectorUrl,omitempty"`
+
 	// resource requests and limits for glidein pods
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 

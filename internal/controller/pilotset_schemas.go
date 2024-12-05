@@ -222,7 +222,8 @@ func (du *TokenSecretValueUpdater) updateResourceValue(r Reconciler, sec *corev1
 // ResourceUpdater implementation that updates a Deployment based on the
 // updated contents of a manifest file in Git
 type DeploymentGitUpdater struct {
-	manifest *gmosv1alpha1.PilotSetNamespaceConfig
+	manifest     *gmosv1alpha1.PilotSetNamespaceConfig
+	collectorUrl string
 }
 
 // Helper function to check that a pointer is both non nil and equal to a value
@@ -291,7 +292,7 @@ func (du *DeploymentGitUpdater) updateResourceValue(r Reconciler, dep *appsv1.De
 	for i, val := range manifest.Env {
 		newEnv[i] = corev1.EnvVar{Name: val.Name, Value: val.Value}
 	}
-	newEnv[len(manifest.Env)] = corev1.EnvVar{Name: "LOCAL_POOL", Value: fmt.Sprintf("%s%s.%s.svc.cluster.local", dep.Name, RNCollector, dep.Namespace)}
+	newEnv[len(manifest.Env)] = corev1.EnvVar{Name: "CONDOR_VIEW_HOST", Value: du.collectorUrl}
 	dep.Spec.Template.Spec.Containers[0].Env = newEnv
 
 	// Security context parameters
