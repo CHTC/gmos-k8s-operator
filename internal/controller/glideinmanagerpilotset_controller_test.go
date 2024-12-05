@@ -167,6 +167,17 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 				GlideinSets: []gmosv1alpha1.GlideinSetSpec{},
 			},
 		}
+
+		pushGatewayName := types.NamespacedName{
+			Name:      resourceName + string(RNPrometheusPushgateway),
+			Namespace: "default",
+		}
+
+		prometheusName := types.NamespacedName{
+			Name:      resourceName + string(RNPrometheus),
+			Namespace: "default",
+		}
+
 		BeforeAll(func() {
 			By("creating the custom resource for the Kind GlideinManagerPilotSet with Prometheus Config")
 			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
@@ -200,16 +211,6 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-
-			pushGatewayName := types.NamespacedName{
-				Name:      RNPrometheusPushgateway.nameFor(resource),
-				Namespace: resource.GetNamespace(),
-			}
-
-			prometheusName := types.NamespacedName{
-				Name:      RNPrometheus.nameFor(resource),
-				Namespace: resource.GetNamespace(),
-			}
 
 			By("Creating a PushGateway Deployment and Service")
 			pushGatewayDep := appsv1.Deployment{}
@@ -248,6 +249,52 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			err = k8sClient.Get(ctx, prometheusName, &promSvc)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(promSvc.Spec.Selector).To(HaveKeyWithValue("gmos.chtc.wisc.edu/app", PROMETHEUS))
+
+			By("Setting the Prometheus storage volume as specified in the custom resource")
+			depPVC := promDep.Spec.Template.Spec.Volumes[1].PersistentVolumeClaim
+			expectedPVC := glideinManagerResource.Spec.Prometheus.StorageVolume.PersistentVolumeClaim
+			Expect(depPVC).To(Equal(expectedPVC))
+		})
+
+		It("Should add a kubelet scrape config when given a non-default service account", func() {
+			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+			resource.Spec.Prometheus.ServiceAccount = "sample-account"
+
+			k8sClient.Update(ctx, resource)
+
+			By("re-reconciling the updated resource")
+			controllerReconciler := &GlideinManagerPilotSetReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding a service account to the deployment")
+			promDep := appsv1.Deployment{}
+			err = k8sClient.Get(ctx, prometheusName, &promDep)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promDep.Spec.Template.Spec.ServiceAccountName).To(Equal(resource.Spec.Prometheus.ServiceAccount))
+
+			By("Adding adding a Kubernetes Service Discovery scrape config to the prometheus configmap")
+			promConfigMap := corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, prometheusName, &promConfigMap)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promConfigMap.Data).To(HaveKey("prometheus.yaml"))
+
+			var cfgMap map[string]interface{}
+			err = yaml.Unmarshal([]byte(promConfigMap.Data["prometheus.yaml"]), &cfgMap)
+			Expect(err).NotTo(HaveOccurred())
+			// TODO might want to make a struct for this rather than mangling anonymous interfaces
+			sdConfigs := cfgMap["scrape_configs"].([]interface{})[0].(map[string]interface{})["kubernetes_sd_configs"].([]interface{})
+			sdConfig := sdConfigs[0].(map[string]interface{})["role"].(string)
+			Expect(sdConfig).To(Equal("node"))
+
 		})
 	})
 
