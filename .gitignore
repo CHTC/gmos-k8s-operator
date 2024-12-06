@@ -28,3 +28,4 @@ go.work
 *~
 
 kustomize/secrets/*
+!kustomize/secrets/kustomization.yaml
