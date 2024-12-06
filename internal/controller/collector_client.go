@@ -60,7 +60,9 @@ func (cc *CollectorClient) startPolling(interval time.Duration) {
 
 // Stop polling the collector
 func (cc *CollectorClient) stopPolling() {
-	cc.tokenUpdateTicker.Stop()
+	if cc.tokenUpdateTicker != nil {
+		cc.tokenUpdateTicker.Stop()
+	}
 	cc.doneChan <- true
 }
 
@@ -184,7 +186,7 @@ func addCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHan
 		log.Info(fmt.Sprintf("Creating new collector client for namespaced name %v", namespacedName))
 		newClient := newCollectorClient(resource, updateHandler)
 		newClient.startPolling(1 * time.Minute)
-		collectorClients[resource.GetNamespace()] = &newClient
+		collectorClients[namespacedName] = &newClient
 	} else {
 		log.Info(fmt.Sprintf("Collector client already exists for namespaced name %v, updating", namespacedName))
 		existingClient.resource = resource

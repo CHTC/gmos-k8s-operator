@@ -56,7 +56,6 @@ func createResourceIfNotExists[T client.Object](
 			log.Error(err, "Unable to create resource")
 			return err
 		}
-		markResourceOutOfSync(namespacedNameFor(reconcileState.resource))
 		return nil
 	} else {
 		log.Error(err, "Unable to get resource")
@@ -103,6 +102,21 @@ func applyUpdateToResource[T client.Object](
 		return err
 	} else {
 		log.Error(err, "Unable to get resource")
+		return err
+	}
+	return nil
+}
+
+func getResourceValue[T client.Object](reconcileState *PilotSetReconcileState, resourceName ResourceName, resource T) error {
+	log := log.FromContext(reconcileState.ctx)
+	name := resourceName.nameFor(reconcileState.resource)
+	err := reconcileState.reconciler.getClient().Get(
+		reconcileState.ctx,
+		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
+		resource,
+	)
+	if err != nil {
+		log.Error(err, "Unable to retrieve Git sync state from GlideinSet")
 		return err
 	}
 	return nil

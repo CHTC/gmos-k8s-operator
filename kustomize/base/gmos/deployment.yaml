@@ -19,12 +19,8 @@ spec:
         image: hub.opensciencegrid.org/mwestphall/glidein-manager-file-server:latest
         env:
         - name: REPO_URL
-          value: git@github.com:mwestphall/glidein-manager-test-upstream.git
-        - name: SSH_KEY
-          value: /mnt/ssh/upstream-repo-key
+          value: https://github.com/mwestphall/glidein-manager-test-upstream.git
         volumeMounts:
-        - name: gm-file-server-ssh-key
-          mountPath: /mnt/ssh/
         - name: gm-file-server-config
           mountPath: /etc/gm-file-server/config
         - name: gm-file-server-pilot-token
@@ -39,9 +35,6 @@ spec:
             memory: 2Gi
             cpu: "1"
       volumes:
-      - name: gm-file-server-ssh-key
-        secret:
-          secretName: gm-file-server-ssh-key
       - name: gm-file-server-pilot-token
         secret:
           secretName: gm-file-server-pilot-token
