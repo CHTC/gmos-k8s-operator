@@ -90,10 +90,18 @@ Inspect the resources created in the `dev` namespace by the operator:
 
 
 Update the Custom Resource (CR) that drives the operator's behavior, observe
-the operator's response to changes
+the operator's response to changes:
 ```sh
 kubectl -n dev edit glideinmanagerpilotset glideinmanagerpilotset-sample
 kubectl -n glidein-manager-operator logs -f deployment/glidein-manager-controller-manager
+```
+
+
+Update the URL that points to the git repo that drives the operator's behavior, observe
+the operator's response to changes:
+```sh
+# Find the field with name: REPO_URL under env:, edit the value
+kubectl -n dev edit deployment gm-file-server
 ```
 
 ### To Uninstall
