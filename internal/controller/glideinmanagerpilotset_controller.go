@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	gmosClient "github.com/chtc/gmos-client/client"
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
@@ -180,35 +179,6 @@ func updateErrOk(err error) bool {
 	return err == nil || apierrors.IsNotFound(err)
 }
 
-// Update the PilotSet's children based on new data in its Glidein Manager's
-// git repository
-func (pr *PilotSetReconcileState) applyGitUpdate(gitUpdate gmosClient.RepoUpdate) error {
-	log := log.FromContext(pr.ctx)
-	log.Info("Got repo update!")
-
-	log.Info("Updating data Secret")
-	err := applyUpdateToResource(pr, RNData, &corev1.Secret{}, &DataSecretGitUpdater{gitUpdate: &gitUpdate})
-	if !updateErrOk(err) {
-		return err
-	}
-
-	log.Info("Updating Deployment")
-	err = applyUpdateToResource(pr, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{gitUpdate: &gitUpdate})
-	if !updateErrOk(err) {
-		return err
-	}
-
-	return nil
-}
-
-// Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
-// secret store
-func (pu *PilotSetReconcileState) applySecretUpdate(secSource PilotSetSecretSource, sv gmosClient.SecretValue) error {
-	log := log.FromContext(pu.ctx)
-	log.Info("Secret updated to version " + sv.Version)
-	return applyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
-}
-
 // Create the base set of resources for a GlideinManagerPilotSet:
 // - A Secret containing the signing key for the Collector's tokens
 // - A ConfigMap containing config.d files for the Collector
@@ -272,6 +242,8 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 			if err != nil {
 				return err
 			}
+		} else if err != nil {
+			return err
 		}
 	}
 

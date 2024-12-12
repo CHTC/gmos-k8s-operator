@@ -7,63 +7,111 @@
 ## Getting Started
 
 ### Prerequisites
-- go version v1.20.0+
+- go version ~v1.21.0
+  - Several of the operator sdk build tools have been observed not to work on higher Go versions.
+    [gvm](https://github.com/moovweb/gvm) is a potential solution for 
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
 
+### Run automated tests
+
+Before attempting to deploy to a cluster, ensure automated tests pass.
+
+```
+cd gmos-k8s-operator
+make test
+```
+
+### (Recommended) Install a local kubernetes development environment with minikube
+
+See [minikube start](https://minikube.sigs.k8s.io/docs/start/) documentation
+for installation installation instructions. After installation, ensure you are running
+kubectl against your local cluster with:
+
+```
+kubectl config use-context minikube
+```
+
+
 ### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+**Build and your image into the minikube docker namespace**
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/gmos-k8s-operator:tag
+# minikube build env doesn't appear to support docker-compose, need to run a raw docker build command
+eval $(minikube docker-env)
+docker build -t hub.opensciencegrid.org/mwestphall/gmos-k8s-operator .
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified. 
-And it is required to have access to pull the image from the working environment. 
-Make sure you have the proper permission to the registry if the above commands don’t work.
+**Create an OSPool access token Secret:**
 
-**Install the CRDs into the cluster:**
+For testing purposes, this may be a dummy value. If you wish for deployed EPs to connect to a real
+htcondor pool, you must supply a real IDToken for that pool.
 
 ```sh
-make install
+kubectl create secret generic \
+  --dry-run=client gm-file-server-pilot-tokn \
+  --from-literal=ospool-ep.tkn=<some token value> -o yaml \
+  > kustomize/secrets/pilot-token.yaml 
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+> **WARNING:** this token file is .gitignored by default. If using a real token, ensure that that it is not committed.
+
+
+**Deploy to the local minikube cluster**:
 
 ```sh
-make deploy IMG=<some-registry>/gmos-k8s-operator:tag
+kubectl apply -k kustomize
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin 
-privileges or be logged in as admin.
+### To inspect a running instance of the operator
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+Tail the logs of the operator pod in the operator namespace:
 
 ```sh
-kubectl apply -k config/samples/
+kubectl -n glidein-manager-operator logs -f deployment/glidein-manager-controller-manager
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+Inspect the resources created in the `dev` namespace by the operator:
+
+- Deployments:
+  ```sh
+  kubectl -n dev get deployment | grep glideinmanagerpilotset
+  ```
+- Pods:
+  ```sh
+  kubectl -n dev get pod | grep glideinmanagerpilotset
+  ```
+- ConfigMaps:
+  ```sh
+  kubectl -n dev get configmap | grep glideinmanagerpilotset
+  ```
+- Secrets:
+  ```sh
+  kubectl -n dev get secret | grep glideinmanagerpilotset
+  ```
+
+
+Update the Custom Resource (CR) that drives the operator's behavior, observe
+the operator's response to changes:
+```sh
+kubectl -n dev edit glideinmanagerpilotset glideinmanagerpilotset-sample
+kubectl -n glidein-manager-operator logs -f deployment/glidein-manager-controller-manager
+```
+
+
+Update the URL that points to the git repo that drives the operator's behavior, observe
+the operator's response to changes:
+```sh
+# Find the field with name: REPO_URL under env:, edit the value
+kubectl -n dev edit deployment gm-file-server
+```
 
 ### To Uninstall
 **Delete the instances (CRs) from the cluster:**
 
 ```sh
-kubectl delete -k config/samples/
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
+./delete_resources.sh
 ```
 
 ## Contributing
