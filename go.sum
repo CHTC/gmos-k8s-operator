@@ -19,6 +19,8 @@ github.com/cespare/xxhash/v2 v2.2.0 h1:DC2CZ1Ep5Y4k3ZQ899DldepgrayRUGE6BBZ/cd9Cj
 github.com/cespare/xxhash/v2 v2.2.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/chtc/gmos-client v0.0.0-20240708195940-e033cff48b43 h1:SD/7lPEKJys07aFYwHNlQgnYaltsUzy0Q9Iobiw/pwo=
 github.com/chtc/gmos-client v0.0.0-20240708195940-e033cff48b43/go.mod h1:Kfy2IbJ9W/UgD9nAfLSRwuEDd0TAIAxVPn85L1FSuuo=
+github.com/chtc/gmos-client v0.1.0 h1:YIsSUncdqo7lPManBDVajiNwyz9UJnJnqJAdb8nEWIY=
+github.com/chtc/gmos-client v0.1.0/go.mod h1:whDrQ0nGiIj0NfH6awLaaAyEhPFRfRyC3LX6Q3L26iM=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
