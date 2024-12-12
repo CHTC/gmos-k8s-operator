@@ -7,7 +7,9 @@
 ## Getting Started
 
 ### Prerequisites
-- go version v1.20.0+
+- go version ~v1.21.0
+  - Several of the operator sdk build tools have been observed not to work on higher Go versions.
+    [gvm](https://github.com/moovweb/gvm) is a potential solution for 
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
@@ -17,6 +19,7 @@
 Before attempting to deploy to a cluster, ensure automated tests pass.
 
 ```
+cd gmos-k8s-operator
 make test
 ```
 
@@ -49,7 +52,7 @@ htcondor pool, you must supply a real IDToken for that pool.
 kubectl create secret generic \
   --dry-run=client gm-file-server-pilot-tokn \
   --from-literal=ospool-ep.tkn=<some token value> -o yaml \
-  > kustomize/secrets/pilot-token2.yaml 
+  > kustomize/secrets/pilot-token.yaml 
 ```
 
 > **WARNING:** this token file is .gitignored by default. If using a real token, ensure that that it is not committed.

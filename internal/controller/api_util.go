@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"fmt"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -116,7 +118,7 @@ func getResourceValue[T client.Object](reconcileState *PilotSetReconcileState, r
 		resource,
 	)
 	if err != nil {
-		log.Error(err, "Unable to retrieve Git sync state from GlideinSet")
+		log.Error(err, fmt.Sprintf("Unable to retrieve Git sync state from GlideinSet %v", name))
 		return err
 	}
 	return nil

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -159,8 +160,8 @@ func (pr *PilotSetReconcileState) getGitSyncState() (*gmosv1alpha1.PilotSetNames
 	log.Info("Retrieving current Git sync state from GlideinSet")
 	currentConfig := gmosv1alpha1.GlideinSet{}
 	if err := getResourceValue(pr, RNBase, &currentConfig); err != nil {
-		log.Error(err, "Unable to retrieve Git sync state from GlideinSet")
-		return &gmosv1alpha1.PilotSetNamespaceConfig{}, err
+		log.Error(err, fmt.Sprintf("Unable to retrieve Git sync state from GlideinSet %v", pr.resource.GetName()))
+		return nil, err
 	}
 	return currentConfig.RemoteManifest, nil
 }
