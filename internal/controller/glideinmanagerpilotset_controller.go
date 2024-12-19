@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -257,7 +256,7 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 	)
 
 	for _, glideinSet := range glideinSetList.Items {
-		log.Info(fmt.Sprintf("Found GlideinSet with name %v via API call!", glideinSet.Name))
+		log.Info("Found GlideinSet via API call", "glideinSet", glideinSet.Name)
 		outdated := true
 		for _, currentSet := range pilotSet.Spec.GlideinSets {
 			if glideinSet.Name == pilotSet.Name+"-"+currentSet.Name {
@@ -267,7 +266,7 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 		}
 
 		if outdated {
-			log.Info(fmt.Sprintf("GlideinSet %v has been removed, deleting it.", glideinSet.Name))
+			log.Info("GlideinSet has been removed, deleting it.", "glideinSet", glideinSet.Name)
 			err := psState.reconciler.getClient().Delete(psState.ctx, &glideinSet)
 			if err != nil {
 				log.Error(err, "Unable to delete stale GlideinSet")

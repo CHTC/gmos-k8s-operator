@@ -39,6 +39,8 @@ import (
 
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 	"github.com/chtc/gmos-k8s-operator/internal/controller"
+	"github.com/chtc/gmos-k8s-operator/internal/logging"
+	"github.com/go-logr/logr"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -88,7 +90,8 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(logr.FromSlogHandler(logging.NewLogger().Handler()))
+	// ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

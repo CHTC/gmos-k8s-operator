@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"fmt"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -77,7 +75,7 @@ func applyUpdateToResource[T client.Object](
 ) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.nameFor(reconcileState.resource)
-	log.Info("Applying updates to resource " + name)
+	log.Info("Applying updates to resource", "resource", name)
 	err := reconcileState.reconciler.getClient().Get(
 		reconcileState.ctx,
 		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
@@ -86,11 +84,11 @@ func applyUpdateToResource[T client.Object](
 	if err == nil {
 		updated, err := resourceUpdater.updateResourceValue(reconcileState.reconciler, resource)
 		if err != nil {
-			log.Error(err, "Unable to apply update to resource value: "+name)
+			log.Error(err, "Unable to apply update to resource value", "resource", name)
 			return err
 		}
 		if !updated {
-			log.Info("No updates needed for resource " + name)
+			log.Info("No updates needed for resource ", "resource", name)
 			return nil
 		}
 		err = reconcileState.reconciler.getClient().Update(reconcileState.ctx, resource)
@@ -98,7 +96,7 @@ func applyUpdateToResource[T client.Object](
 			log.Error(err, "Unable to post update to resource "+name)
 			return err
 		}
-		log.Info("Resource updated successfully: " + name)
+		log.Info("Resource updated successfully: ", "resource", name)
 	} else if apierrors.IsNotFound(err) {
 		log.Info("Resource not found, must have been deleted or not created")
 		return err
@@ -118,7 +116,7 @@ func getResourceValue[T client.Object](reconcileState *PilotSetReconcileState, r
 		resource,
 	)
 	if err != nil {
-		log.Error(err, fmt.Sprintf("Unable to retrieve Git sync state from GlideinSet %v", name))
+		log.Error(err, "Unable to retrieve Git sync state from GlideinSet", "glideinSet", name)
 		return err
 	}
 	return nil

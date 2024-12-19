@@ -72,7 +72,7 @@ func (cc *CollectorClient) stopPolling() {
 // - Update the Secret(s) that store the credentials
 func (cc *CollectorClient) handleTokenUpdates() {
 	log := log.FromContext(cc.ctx)
-	log.Info(fmt.Sprintf("Checking whether collector tokens are needed in namespace %v", cc.resource.GetNamespace()))
+	log.Info("Checking whether collector tokens are needed in namespace", "namespace", cc.resource.GetNamespace())
 	shouldUpdate, err := cc.updateHandler.shouldUpdateTokens()
 	if err != nil {
 		log.Error(err, "Unable to determine whether to update tokens")
@@ -142,7 +142,7 @@ func execInCollector(ctx context.Context, resource metav1.Object, cmd []string) 
 		return nil, fmt.Errorf("expected 1 collector pod for %v, found %v", resource.GetName(), len(pods.Items))
 	}
 	pod := pods.Items[0]
-	log.Info(fmt.Sprintf("Found pod with name: %+v", pod.Name))
+	log.Info("Found pod with name", "name", pod.Name)
 
 	if pod.Status.Phase != v1.PodRunning {
 		return nil, ErrPodNotRunning
@@ -183,12 +183,12 @@ func addCollectorClient(resource metav1.Object, updateHandler CollectorUpdateHan
 	namespacedName := namespacedNameFor(resource)
 
 	if existingClient, exists := collectorClients[namespacedName]; !exists {
-		log.Info(fmt.Sprintf("Creating new collector client for namespaced name %v", namespacedName))
+		log.Info("Creating new collector client for namespaced name", "namespacedName", namespacedName)
 		newClient := newCollectorClient(resource, updateHandler)
 		newClient.startPolling(1 * time.Minute)
 		collectorClients[namespacedName] = &newClient
 	} else {
-		log.Info(fmt.Sprintf("Collector client already exists for namespaced name %v, updating", namespacedName))
+		log.Info("Collector client already exists for namespaced name, updating", "namespacedName", namespacedName)
 		existingClient.resource = resource
 		existingClient.updateHandler = updateHandler
 		return nil
@@ -205,7 +205,7 @@ func removeCollectorClient(resource metav1.Object) {
 	namespacedName := namespacedNameFor(resource)
 
 	if existingClient, exists := collectorClients[namespacedName]; exists {
-		log.Info(fmt.Sprintf("Removing collector client for namespaced name %v", namespacedName))
+		log.Info("Removing collector client for namespaced name", "namespacedName", namespacedName)
 		existingClient.stopPolling()
 	}
 }

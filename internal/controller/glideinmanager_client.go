@@ -6,7 +6,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
@@ -118,7 +117,7 @@ func (p *GlideinManagerPoller) setUpdateHandler(resource string, updateHandler G
 // - Then, update the associated Deployment and Secrets based on changes to the manifest
 func (p *GlideinManagerPoller) checkForGitUpdates() {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Checking for git updates from %v", p.client.ManagerUrl))
+	log.Info("Checking for git updates from manager", "manager", p.client.ManagerUrl)
 	repoUpdate, err := p.client.SyncRepo()
 	if err != nil {
 		log.Error(err, "Unable to check for git update")
@@ -127,7 +126,7 @@ func (p *GlideinManagerPoller) checkForGitUpdates() {
 	for resource, updateHandler := range p.updateHandlers {
 		currentConfig, err := updateHandler.getGitSyncState()
 		if err != nil {
-			log.Error(err, fmt.Sprintf("Unable to retrieve current Git sync state for resource %v", resource))
+			log.Error(err, "Unable to retrieve current Git sync state for resource", "resource", resource)
 			continue
 		}
 		if currentConfig != nil {
@@ -136,11 +135,11 @@ func (p *GlideinManagerPoller) checkForGitUpdates() {
 				continue
 			}
 		}
-		log.Info(fmt.Sprintf("Updating resource %v to commit %v with updater %+v", resource, repoUpdate.CurrentCommit, updateHandler))
+		log.Info("Updating resource to commit", "resource", resource, "commit", repoUpdate.CurrentCommit, "handler", updateHandler)
 
 		// TODO this trusts that the ApplyGitUpdate implementer updates its own CurrentCommit
 		if err := updateHandler.applyGitUpdate(repoUpdate); err != nil {
-			log.Error(err, fmt.Sprintf("Error occurred while handling repo update for resource %v", resource))
+			log.Error(err, "Error occurred while handling repo update for resource", "resource", resource)
 		}
 	}
 }
@@ -154,11 +153,11 @@ const MAX_LABEL_LENGTH = 63
 // - Then, update the associated Secret(s) based on the new Secret value
 func (p *GlideinManagerPoller) checkForSecretUpdates() {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
+	log.Info("Checking for secret updates from manager", "manager", p.client.ManagerUrl)
 	for resource, updateHandler := range p.updateHandlers {
 		currentConfig, err := updateHandler.getGitSyncState()
 		if err != nil {
-			log.Error(err, fmt.Sprintf("Unable to retrieve current Git sync state for resource %v", resource))
+			log.Error(err, "Unable to retrieve current Git sync state for resource", "resource", resource)
 			continue
 		}
 		if currentConfig == nil {
@@ -175,7 +174,7 @@ func (p *GlideinManagerPoller) checkForSecretUpdates() {
 		}
 		nextSecret, err := p.client.GetSecret(currentConfig.SecretSource.SecretName)
 		if err != nil {
-			log.Error(err, fmt.Sprintf("Error occurred while fetching secret for namespace %v", namespace))
+			log.Error(err, "Error occurred while fetching secret for namespace", "namespace", namespace)
 			continue
 		}
 
@@ -184,7 +183,7 @@ func (p *GlideinManagerPoller) checkForSecretUpdates() {
 
 		currentSecretVersion, err := updateHandler.getSecretSyncState()
 		if err != nil {
-			log.Error(err, fmt.Sprintf("Error occurred while fetching current secret state secret for namespace %v", namespace))
+			log.Error(err, "Error occurred while fetching current secret state secret for namespace", "namespace", namespace)
 			continue
 		}
 
@@ -192,9 +191,9 @@ func (p *GlideinManagerPoller) checkForSecretUpdates() {
 			continue
 		}
 
-		log.Info(fmt.Sprintf("Updating namespace %v to secret %v, version %v", namespace, nextSecret.Name, nextSecret.Version))
+		log.Info("Updating namespace to secret version", "namespace", namespace, "secret", nextSecret.Name, "version", nextSecret.Version)
 		if err := updateHandler.applySecretUpdate(currentConfig.SecretSource, nextSecret); err != nil {
-			log.Error(err, fmt.Sprintf("Error occurred while handling secret update for namespace %v", namespace))
+			log.Error(err, "Error occurred while handling secret update for namespace", "namespace", namespace)
 		}
 	}
 }
@@ -226,7 +225,7 @@ var activeGlideinManagerPollers = make(map[string]*GlideinManagerPoller)
 // Should be Idempotent
 func addGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler GlideinManagerUpdateHandler) error {
 	log := log.FromContext(context.TODO())
-	log.Info(fmt.Sprintf("Updating Glidein Manager Watcher for namespace %v", glideinSet.Namespace))
+	log.Info("Updating Glidein Manager Watcher for namespace", "namespace", glideinSet.Namespace)
 
 	clientName, ok := os.LookupEnv("CLIENT_NAME")
 	if !ok {
@@ -235,7 +234,7 @@ func addGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet, updateHandler
 
 	namespacedName := namespacedNameFor(glideinSet)
 	if existingPoller, exists := activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl]; !exists {
-		log.Info(fmt.Sprintf("No existing watchers for manager %v. Creating for namespace %v", glideinSet.Spec.GlideinManagerUrl, glideinSet.Namespace))
+		log.Info("No existing watchers for manager. Creating for one namespace", "manager", glideinSet.Spec.GlideinManagerUrl, "namespace", glideinSet.Namespace)
 		poller := newGlidenManagerPoller(clientName, glideinSet.Spec.GlideinManagerUrl)
 		poller.setUpdateHandler(namespacedName, updateHandler)
 		activeGlideinManagerPollers[glideinSet.Spec.GlideinManagerUrl] = poller
@@ -261,11 +260,11 @@ func removeGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
 	log := log.FromContext(context.TODO())
 
 	namespacedName := namespacedNameFor(glideinSet)
-	log.Info(fmt.Sprintf("Removing glidein manager watcher from namespaced name %v", namespacedName))
+	log.Info("Removing glidein manager watcher from namespaced name", "namespace", namespacedName)
 	var toDelete *GlideinManagerPoller = nil
 	for _, poller := range activeGlideinManagerPollers {
 		if poller.hasUpdateHandlerForResource(namespacedName) {
-			log.Info(fmt.Sprintf("consumer removed for manager %v", poller.client.ManagerUrl))
+			log.Info("consumer removed for manager", "manager", poller.client.ManagerUrl)
 			delete(poller.updateHandlers, namespacedName)
 			if len(poller.updateHandlers) == 0 {
 				toDelete = poller
@@ -274,7 +273,7 @@ func removeGlideinManagerWatcher(glideinSet *gmosv1alpha1.GlideinSet) {
 		}
 	}
 	if toDelete != nil {
-		log.Info(fmt.Sprintf("Last consumer removed for manager %v. Removing watcher.", toDelete.client.ManagerUrl))
+		log.Info("Last consumer removed for manager. Removing watcher.", "manager", toDelete.client.ManagerUrl)
 		delete(activeGlideinManagerPollers, toDelete.client.ManagerUrl)
 		toDelete.stopPolling()
 	}

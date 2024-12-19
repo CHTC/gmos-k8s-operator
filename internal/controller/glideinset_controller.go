@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -150,7 +149,7 @@ func (pr *PilotSetReconcileState) applyGitUpdate(gitUpdate gmosClient.RepoUpdate
 // secret store
 func (pu *PilotSetReconcileState) applySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)
-	log.Info("Secret updated to version " + sv.Version)
+	log.Info("Secret updated.", "secretVersion", sv.Version)
 	return applyUpdateToResource(pu, RNTokens, &corev1.Secret{}, &TokenSecretValueUpdater{secSource: &secSource, secValue: &sv})
 }
 
@@ -160,7 +159,7 @@ func (pr *PilotSetReconcileState) getGitSyncState() (*gmosv1alpha1.PilotSetNames
 	log.Info("Retrieving current Git sync state from GlideinSet")
 	currentConfig := gmosv1alpha1.GlideinSet{}
 	if err := getResourceValue(pr, RNBase, &currentConfig); err != nil {
-		log.Error(err, fmt.Sprintf("Unable to retrieve Git sync state from GlideinSet %v", pr.resource.GetName()))
+		log.Error(err, "Unable to retrieve Git sync state from GlideinSet", "glideinSet", pr.resource.GetName())
 		return nil, err
 	}
 	return currentConfig.RemoteManifest, nil
