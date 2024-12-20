@@ -3,7 +3,7 @@ module github.com/chtc/gmos-k8s-operator
 go 1.22.10
 
 require (
-	github.com/chtc/gmos-client v0.1.0
+	github.com/chtc/gmos-client v0.1.1
 	github.com/onsi/ginkgo/v2 v2.17.1
 	github.com/onsi/gomega v1.32.0
 	k8s.io/api v0.30.1
