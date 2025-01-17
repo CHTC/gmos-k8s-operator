@@ -1,0 +1,41 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch-dashboards
+  labels:
+    component: opensearch-dashboards
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: opensearch-dashboards
+  template:
+    metadata:
+      labels:
+        component: opensearch-dashboards
+    spec:
+      containers:
+        - name: opensearch-dashboards
+          image: opensearchproject/opensearch-dashboards:latest
+          ports:
+            - containerPort: 5601
+          env:
+            - name: OPENSEARCH_HOSTS
+              value: '["http://opensearch:9200"]'
+            - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+              value: 'true'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-dashboards
+  labels:
+    component: opensearch-dashboards
+spec:
+  ports:
+  - port: 5601
+  selector:
+    component: opensearch-dashboards
+

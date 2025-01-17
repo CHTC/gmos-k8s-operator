@@ -1,0 +1,4 @@
+resources:
+  - opensearch.yaml
+  - os-dashboard.yaml
+  - fluentd.yaml

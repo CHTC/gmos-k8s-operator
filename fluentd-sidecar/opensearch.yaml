@@ -1,0 +1,57 @@
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch
+  labels:
+    component: opensearch
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: opensearch
+  template:
+    metadata:
+      labels:
+        component: opensearch
+    spec:
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:latest
+          ports:
+            - containerPort: 9200
+              name: client
+            - containerPort: 9300
+              name: nodes
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: plugins.security.disabled
+              value: 'true'
+            - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+              value: HelloAdmin123!
+          resources:
+            requests:
+              memory: 500Mi
+              cpu: '0.5'
+            limits:
+              memory: 2Gi
+              cpu: '2'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  labels:
+    component: opensearch
+spec:
+  ports:
+  - port: 9200
+    name: client
+  - port: 9300
+    name: nodes
+  selector:
+    component: opensearch
+
