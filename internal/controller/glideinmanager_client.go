@@ -129,7 +129,7 @@ func (p *GlideinManagerPoller) checkForGitUpdates() {
 	for resource, updateHandler := range p.updateHandlers {
 		currentConfig, err := updateHandler.getGitSyncState()
 		if err != nil {
-			log.Error(err, "Unable to retrieve current Git sync state for resource")
+			log.Error(err, fmt.Sprintf("Unable to retrieve current Git sync state for resource %v", resource))
 			continue
 		}
 		if currentConfig != nil {
@@ -157,10 +157,10 @@ const MAX_LABEL_LENGTH = 63
 func (p *GlideinManagerPoller) checkForSecretUpdates() {
 	log := log.FromContext(context.TODO())
 	log.Info(fmt.Sprintf("Checking for secret updates from %v", p.client.ManagerUrl))
-	for _, updateHandler := range p.updateHandlers {
+	for resource, updateHandler := range p.updateHandlers {
 		currentConfig, err := updateHandler.getGitSyncState()
 		if err != nil {
-			log.Error(err, "Unable to retrieve current Git sync state for resource")
+			log.Error(err, fmt.Sprintf("Unable to retrieve current Git sync state for resource %v", resource))
 			continue
 		}
 		if currentConfig == nil {
