@@ -1,4 +1,4 @@
-// Yaml schema for GlideinManagerPilotSet config provided by a Glidein Manager Git Repo
+// Yaml schema for GlideinSetCollection config provided by a Glidein Manager Git Repo
 package controller
 
 import (

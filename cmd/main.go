@@ -147,12 +147,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Add GlideinManagerPilotSet controller
-	if err = (&controller.GlideinManagerPilotSetReconciler{
+	// Add GlideinSetCollection controller
+	if err = (&controller.GlideinSetCollectionReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GlideinManagerPilotSet")
+		setupLog.Error(err, "unable to create controller", "controller", "GlideinSetCollection")
 		os.Exit(1)
 	}
 

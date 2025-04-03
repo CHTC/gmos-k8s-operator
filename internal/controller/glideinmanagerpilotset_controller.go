@@ -42,17 +42,17 @@ type Reconciler interface {
 	getScheme() *runtime.Scheme
 }
 
-// GlideinManagerPilotSetReconciler reconciles a GlideinManagerPilotSet object
-type GlideinManagerPilotSetReconciler struct {
+// GlideinSetCollectionReconciler reconciles a GlideinSetCollection object
+type GlideinSetCollectionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-func (r *GlideinManagerPilotSetReconciler) getClient() client.Client {
+func (r *GlideinSetCollectionReconciler) getClient() client.Client {
 	return r.Client
 }
 
-func (r *GlideinManagerPilotSetReconciler) getScheme() *runtime.Scheme {
+func (r *GlideinSetCollectionReconciler) getScheme() *runtime.Scheme {
 	return r.Scheme
 }
 
@@ -69,33 +69,33 @@ func (r *GlideinManagerPilotSetReconciler) getScheme() *runtime.Scheme {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the GlideinManagerPilotSet object against the actual cluster state, and then
+// the GlideinSetCollection object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
-func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+func (r *GlideinSetCollectionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := log.FromContext(ctx)
 	log.Info("Running reconcile")
 
-	pilotSet := &gmosv1alpha1.GlideinManagerPilotSet{}
+	pilotSet := &gmosv1alpha1.GlideinSetCollection{}
 
 	if err = r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("GlideinManagerPilotSet resource not found. It is either deleted or not created.")
+			log.Info("GlideinSetCollection resource not found. It is either deleted or not created.")
 			return result, nil
 		}
-		log.Error(err, "Failed to get GlideinManagerPilotSet")
+		log.Error(err, "Failed to get GlideinSetCollection")
 		return
 	}
 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
 	// pilotSet is deleted
 	if !controllerutil.ContainsFinalizer(pilotSet, pilotSetFinalizer) {
-		log.Info("Adding finalizer for GlideinManagerPilotSet")
+		log.Info("Adding finalizer for GlideinSetCollection")
 		if !controllerutil.AddFinalizer(pilotSet, pilotSetFinalizer) {
-			log.Error(nil, "Failed to add finalizer to GlideinManagerPilotSet")
+			log.Error(nil, "Failed to add finalizer to GlideinSetCollection")
 		}
 
 		if err = r.Update(ctx, pilotSet); err != nil {
@@ -109,19 +109,19 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 		if !controllerutil.ContainsFinalizer(pilotSet, pilotSetFinalizer) {
 			return
 		}
-		log.Info("Running finalizer on GlideinManagerPilotSet before deletion")
+		log.Info("Running finalizer on GlideinSetCollection before deletion")
 
 		finalizePilotSet(pilotSet)
 
 		// Refresh the Custom Resource post-finalization
 		if err = r.Get(ctx, req.NamespacedName, pilotSet); err != nil {
-			log.Error(err, "Failed to get updated GlideinManagerPilotSet after running finalizer operations")
+			log.Error(err, "Failed to get updated GlideinSetCollection after running finalizer operations")
 			return
 		}
 
 		// Remove the finalizer and update the resource
 		if !controllerutil.RemoveFinalizer(pilotSet, pilotSetFinalizer) {
-			log.Error(nil, "Failed to remove finalizer from GlideinManagerPilotSet")
+			log.Error(nil, "Failed to remove finalizer from GlideinSetCollection")
 		}
 		if err = r.Update(ctx, pilotSet); err != nil {
 			log.Error(err, "Failed to update CRD to remove finalizer")
@@ -137,7 +137,7 @@ func (r *GlideinManagerPilotSetReconciler) Reconcile(ctx context.Context, req ct
 }
 
 // Remove the Glidein Manager Watcher for the namespace when its custom resource is deleted
-func finalizePilotSet(pilotSet *gmosv1alpha1.GlideinManagerPilotSet) {
+func finalizePilotSet(pilotSet *gmosv1alpha1.GlideinSetCollection) {
 	// RemoveGlideinManagerWatcher(pilotSet)
 	// RemoveCollectorClient(pilotSet)
 }
@@ -184,7 +184,7 @@ func updateErrOk(err error) bool {
 // - A ConfigMap containing config.d files for the Collector
 // - A Deployment hosting a single replica of a Collector pod
 // - A Service for TCP on port 9618 on the Collecor
-func createCollectorForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+func createCollectorForPilotSet(r *GlideinSetCollectionReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSetCollection) error {
 	// Collector resources
 	log := log.FromContext(ctx)
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
@@ -220,7 +220,7 @@ func createCollectorForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 // - A ConfigMap containing config.d files for the Collector
 // - A Deployment hosting a single replica of a Collector pod
 // - A Service for TCP on port 9618 on the Collecor
-func createMonitoringForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSetCollection) error {
 	// Collector resources
 	log := log.FromContext(ctx)
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
@@ -264,13 +264,13 @@ func createMonitoringForPilotSet(r *GlideinManagerPilotSetReconciler, ctx contex
 	return nil
 }
 
-// Create the base set of resources for a GlideinManagerPilotSet:
+// Create the base set of resources for a GlideinSetCollection:
 // - A Collector Deployment with associated config and service
 // - A Prometheus monitoring instance with associated
 // - The set of GlideinSets associated with the Collector
-func createResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinManagerPilotSet) error {
+func createResourcesForPilotSet(r *GlideinSetCollectionReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSetCollection) error {
 	log := log.FromContext(ctx)
-	log.Info("Got new value for GlideinManagerPilotSet custom resource!")
+	log.Info("Got new value for GlideinSetCollection custom resource!")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
 	// Collector Resources
@@ -293,11 +293,11 @@ func createResourcesForPilotSet(r *GlideinManagerPilotSetReconciler, ctx context
 }
 
 // Reconcile the collection of GlideinSets in the namespace with the `spec.GlideinSets` field
-// in the GlideinManagerPilotSet
+// in the GlideinSetCollection
 // - Create any GlideinSets in the spec that don't exist yet
 // - Update the Spec of any GlideinSet that already exists and has been changed
 // - Delete GlideinSets that are no longer included in the list
-func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psState *PilotSetReconcileState) error {
+func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinSetCollection, psState *PilotSetReconcileState) error {
 	log := log.FromContext(psState.ctx)
 	// Create/update all present GlideinSets
 	for _, glideinSetSpec := range pilotSet.Spec.GlideinSets {
@@ -350,8 +350,8 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinManagerPilotSet, psStat
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *GlideinManagerPilotSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GlideinSetCollectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gmosv1alpha1.GlideinManagerPilotSet{}).
+		For(&gmosv1alpha1.GlideinSetCollection{}).
 		Complete(r)
 }

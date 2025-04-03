@@ -32,7 +32,7 @@ var _ = Describe("GlideinSet Controller", Ordered, func() {
 		const glideinManagerUrl = "localhost:10110"
 
 		BeforeAll(func() {
-			By("creating the custom resource for the Kind GlideinManagerPilotSet with no GlideinSets")
+			By("creating the custom resource for the Kind GlideinSetCollection with no GlideinSets")
 			os.Setenv("CLIENT_NAME", "localhost:8080")
 			err := k8sClient.Get(ctx, typeNamespacedName, glideinset)
 			if err != nil && errors.IsNotFound(err) {
@@ -54,7 +54,7 @@ var _ = Describe("GlideinSet Controller", Ordered, func() {
 
 		AfterAll(func() {
 			// Cleanup logic after each test, like removing the resource instance.
-			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			By("Cleanup the specific resource instance GlideinSetCollection")
 			os.Unsetenv("CLIENT_NAME")
 			resource := &gmosv1alpha1.GlideinSet{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
@@ -166,7 +166,7 @@ var _ = Describe("GlideinSet Controller", Ordered, func() {
 	})
 })
 
-var _ = Describe("GlideinManagerPilotSet Controller", func() {
+var _ = Describe("GlideinSetCollection Controller", func() {
 	Context("When reconciling a GlideinSet with upstream config", func() {
 		const parentResourceName = "test-configured"
 		const resourceName = parentResourceName + "-glideinset"
@@ -237,7 +237,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			By("Cleanup the specific resource instance GlideinSetCollection")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 

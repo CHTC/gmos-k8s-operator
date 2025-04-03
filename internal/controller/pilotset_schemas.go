@@ -109,7 +109,7 @@ func (*EmptySecretCreator) setResourceValue(
 
 func labelsForPilotSet(name string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":       "GlideinManagerPilotSet",
+		"app.kubernetes.io/name":       "GlideinSetCollection",
 		"app.kubernetes.io/instance":   name,
 		"app.kubernetes.io/created-by": "controller-manager",
 	}

@@ -29,7 +29,7 @@ var _ = Describe("Glidein Manager Watcher Test", Ordered, func() {
 		var tempDir string
 
 		BeforeAll(func() {
-			By("creating the custom resource for the Kind GlideinManagerPilotSet with no GlideinSets")
+			By("creating the custom resource for the Kind GlideinSetCollection with no GlideinSets")
 			os.Setenv("CLIENT_NAME", "localhost:8080")
 			tempDir = GinkgoT().TempDir()
 			makeTestSourceData(tempDir)
@@ -59,7 +59,7 @@ var _ = Describe("Glidein Manager Watcher Test", Ordered, func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			By("Cleanup the specific resource instance GlideinSetCollection")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 

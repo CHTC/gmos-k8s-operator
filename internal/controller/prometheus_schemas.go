@@ -89,7 +89,7 @@ func getPrometheusConfig(resource metav1.Object, monitoring v1alpha1.PrometheusM
 }
 
 type PrometheusConfigMapEditor struct {
-	pilotSet *v1alpha1.GlideinManagerPilotSet
+	pilotSet *v1alpha1.GlideinSetCollection
 }
 
 func (pe *PrometheusConfigMapEditor) setResourceValue(

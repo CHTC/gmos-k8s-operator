@@ -36,7 +36,7 @@ import (
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
-var _ = Describe("GlideinManagerPilotSet Controller", func() {
+var _ = Describe("GlideinSetCollection Controller", func() {
 	Context("When reconciling a resource with no GlideinSets", func() {
 		const resourceName = "test-empty-pilotset"
 
@@ -46,18 +46,18 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		glideinmanagerpilotset := &gmosv1alpha1.GlideinManagerPilotSet{}
+		glideinmanagerpilotset := &gmosv1alpha1.GlideinSetCollection{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind GlideinManagerPilotSet with no GlideinSets")
+			By("creating the custom resource for the Kind GlideinSetCollection with no GlideinSets")
 			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &gmosv1alpha1.GlideinManagerPilotSet{
+				resource := &gmosv1alpha1.GlideinSetCollection{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: gmosv1alpha1.GlideinManagerPilotSetSpec{
+					Spec: gmosv1alpha1.GlideinSetCollectionSpec{
 						GlideinManagerUrl: "localhost:8080",
 						GlideinSets:       []gmosv1alpha1.GlideinSetSpec{},
 					},
@@ -68,17 +68,17 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			resource := &gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			By("Cleanup the specific resource instance GlideinSetCollection")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
 		It("should reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &GlideinManagerPilotSetReconciler{
+			controllerReconciler := &GlideinSetCollectionReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -91,7 +91,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 
 		It("should create a Collector", func() {
 			By("Checking that a Collector deployment and associated resources were created")
-			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			resource := &gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -143,13 +143,13 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		glideinmanagerpilotset := &gmosv1alpha1.GlideinManagerPilotSet{}
-		glideinManagerResource := &gmosv1alpha1.GlideinManagerPilotSet{
+		glideinmanagerpilotset := &gmosv1alpha1.GlideinSetCollection{}
+		glideinManagerResource := &gmosv1alpha1.GlideinSetCollection{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
 				Namespace: "default",
 			},
-			Spec: gmosv1alpha1.GlideinManagerPilotSetSpec{
+			Spec: gmosv1alpha1.GlideinSetCollectionSpec{
 				GlideinManagerUrl: "localhost:8082",
 				Prometheus: gmosv1alpha1.PrometheusMonitoringSpec{
 					ServiceAccount: "default",
@@ -174,24 +174,24 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		}
 
 		BeforeAll(func() {
-			By("creating the custom resource for the Kind GlideinManagerPilotSet with Prometheus Config")
+			By("creating the custom resource for the Kind GlideinSetCollection with Prometheus Config")
 			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
 			if err != nil && errors.IsNotFound(err) {
 				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
 			}
 		})
 		AfterAll(func() {
-			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			resource := &gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			By("Cleanup the specific resource instance GlideinSetCollection")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
 		It("should reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &GlideinManagerPilotSetReconciler{
+			controllerReconciler := &GlideinSetCollectionReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -203,7 +203,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		})
 
 		It("Should create a Prometheus server", func() {
-			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			resource := &gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -252,7 +252,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		})
 
 		It("Should add a kubelet scrape config when given a non-default service account", func() {
-			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			resource := &gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			resource.Spec.Prometheus.ServiceAccount = "sample-account"
@@ -260,7 +260,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			k8sClient.Update(ctx, resource)
 
 			By("re-reconciling the updated resource")
-			controllerReconciler := &GlideinManagerPilotSetReconciler{
+			controllerReconciler := &GlideinSetCollectionReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -310,13 +310,13 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Name:      resourceName + "-" + glideinSetName,
 			Namespace: "default",
 		}
-		glideinmanagerpilotset := &gmosv1alpha1.GlideinManagerPilotSet{}
-		glideinManagerResource := &gmosv1alpha1.GlideinManagerPilotSet{
+		glideinmanagerpilotset := &gmosv1alpha1.GlideinSetCollection{}
+		glideinManagerResource := &gmosv1alpha1.GlideinSetCollection{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
 				Namespace: "default",
 			},
-			Spec: gmosv1alpha1.GlideinManagerPilotSetSpec{
+			Spec: gmosv1alpha1.GlideinSetCollectionSpec{
 				GlideinManagerUrl: "localhost:8081",
 				GlideinSets: []gmosv1alpha1.GlideinSetSpec{{
 					Name:              glideinSetName,
@@ -336,7 +336,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		}
 
 		BeforeAll(func() {
-			By("creating the custom resource for the Kind GlideinManagerPilotSet with one GlideinSets")
+			By("creating the custom resource for the Kind GlideinSetCollection with one GlideinSets")
 			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
 			if err != nil && errors.IsNotFound(err) {
 				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
@@ -344,17 +344,17 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		})
 
 		AfterAll(func() {
-			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			resource := &gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			By("Cleanup the specific resource instance GlideinSetCollection")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
 		It("should reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &GlideinManagerPilotSetReconciler{
+			controllerReconciler := &GlideinSetCollectionReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -369,8 +369,8 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			glideinSet := &gmosv1alpha1.GlideinSet{}
 			err := k8sClient.Get(ctx, glideinSetNamespacedName, glideinSet)
 			Expect(err).NotTo(HaveOccurred())
-			// Expect that the proper fields were copied from the GlideinManagerPilotSet into the GlideinSet
-			By("Using the schema from the parent GlideinManagerPilotSet")
+			// Expect that the proper fields were copied from the GlideinSetCollection into the GlideinSet
+			By("Using the schema from the parent GlideinSetCollection")
 			spec := glideinSet.Spec
 			baseSpec := glideinManagerResource.Spec
 
@@ -386,7 +386,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			Expect(spec.Resources.Requests.Memory().Equal(*baseSpec.GlideinSets[0].Resources.Requests.Memory())).Should(BeTrue())
 		})
 		It("should modify GlideinSets when the base spec is changed", func() {
-			pilotSet := gmosv1alpha1.GlideinManagerPilotSet{}
+			pilotSet := gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, &pilotSet)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -406,7 +406,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			err = k8sClient.Update(ctx, &pilotSet)
 			Expect(err).NotTo(HaveOccurred())
 			By("Re-reconciling the new spec for the resource")
-			controllerReconciler := &GlideinManagerPilotSetReconciler{
+			controllerReconciler := &GlideinSetCollectionReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -419,8 +419,8 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			glideinSet := &gmosv1alpha1.GlideinSet{}
 			err = k8sClient.Get(ctx, glideinSetNamespacedName, glideinSet)
 			Expect(err).NotTo(HaveOccurred())
-			// Expect that the proper fields were copied from the GlideinManagerPilotSet into the GlideinSet
-			By("Propegating the updates to the schema from the parent GlideinManagerPilotSet")
+			// Expect that the proper fields were copied from the GlideinSetCollection into the GlideinSet
+			By("Propegating the updates to the schema from the parent GlideinSetCollection")
 			spec := glideinSet.Spec
 
 			Expect(spec.GlideinManagerUrl).Should(Equal(newManagerUrl))
@@ -431,7 +431,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		})
 
 		It("should delete GlideinSets when removed from the base spec", func() {
-			pilotSet := gmosv1alpha1.GlideinManagerPilotSet{}
+			pilotSet := gmosv1alpha1.GlideinSetCollection{}
 			err := k8sClient.Get(ctx, typeNamespacedName, &pilotSet)
 			Expect(err).NotTo(HaveOccurred())
 			pilotSet.Spec.GlideinSets = []gmosv1alpha1.GlideinSetSpec{}
@@ -439,7 +439,7 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			err = k8sClient.Update(ctx, &pilotSet)
 			Expect(err).NotTo(HaveOccurred())
 			By("Re-reconciling the new spec for the resource")
-			controllerReconciler := &GlideinManagerPilotSetReconciler{
+			controllerReconciler := &GlideinSetCollectionReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}

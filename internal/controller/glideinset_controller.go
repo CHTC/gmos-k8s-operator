@@ -34,7 +34,7 @@ import (
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
-// GlideinSetReconciler reconciles a GlideinManagerPilotSet object
+// GlideinSetReconciler reconciles a GlideinSet object
 type GlideinSetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -69,7 +69,7 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Add a finalizer to the pilotSet if it doesn't exist, allowing us to perform cleanup when the
 	// pilotSet is deleted
 	if !controllerutil.ContainsFinalizer(glideinSet, pilotSetFinalizer) {
-		log.Info("Adding finalizer for GlideinManagerPilotSet")
+		log.Info("Adding finalizer for GlideinSet")
 		if !controllerutil.AddFinalizer(glideinSet, pilotSetFinalizer) {
 			log.Error(nil, "Failed to add finalizer to GlideinSet")
 		}
@@ -147,7 +147,7 @@ func (pr *PilotSetReconcileState) applyGitUpdate(gitUpdate gmosClient.RepoUpdate
 	return nil
 }
 
-// Update the GlideinManagerPilotSet's children based on new data in its Glidein Manager's
+// Update the GlideinSet's children based on new data in its Glidein Manager's
 // secret store
 func (pu *PilotSetReconcileState) applySecretUpdate(secSource gmosv1alpha1.PilotSetSecretSource, sv gmosClient.SecretValue) error {
 	log := log.FromContext(pu.ctx)

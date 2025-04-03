@@ -24,8 +24,8 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// GlideinManagerPilotSetSpec defines the desired state of GlideinManagerPilotSet
-type GlideinManagerPilotSetSpec struct {
+// GlideinSetCollectionSpec defines the desired state of GlideinSetCollection
+type GlideinSetCollectionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -81,13 +81,13 @@ type GlideinSetSpec struct {
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
-// GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet
-type GlideinManagerPilotSetStatus struct {
+// GlideinSetCollectionStatus defines the observed state of the GlideinSetCollection
+type GlideinSetCollectionStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
-// GlideinManagerPilotSetStatus defines the observed state of GlideinManagerPilotSet
+// GlideinSetStatus defines the observed state of GlideinSet
 type GlideinSetStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -96,33 +96,33 @@ type GlideinSetStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// GlideinManagerPilotSet is the Schema for the glideinmanagerpilotsets API
-type GlideinManagerPilotSet struct {
+// GlideinSetCollection is the Schema for the glideinsetcollection API
+type GlideinSetCollection struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   GlideinManagerPilotSetSpec   `json:"spec,omitempty"`
-	Status GlideinManagerPilotSetStatus `json:"status,omitempty"`
+	Spec   GlideinSetCollectionSpec   `json:"spec,omitempty"`
+	Status GlideinSetCollectionStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// GlideinManagerPilotSetList contains a list of GlideinManagerPilotSet
-type GlideinManagerPilotSetList struct {
+// GlideinSetCollectionList contains a list of GlideinSetCollections
+type GlideinSetCollectionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []GlideinManagerPilotSet `json:"items"`
+	Items           []GlideinSetCollection `json:"items"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// GlideinManagerPilotSet is the Schema for the glideinmanagerpilotsets API
+// GlideinSet is the Schema for the glideisets API
 type GlideinSet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Spec for the GlideinSet as determined by its parent GlideinManagerPilotSet
+	// Spec for the GlideinSet as determined by its parent GlideinSetCollection
 	Spec GlideinSetSpec `json:"spec,omitempty"`
 	// Config injected into the GlideinSet via its upstream GlideinManager Git Repo
 	RemoteManifest *PilotSetNamespaceConfig `json:"remoteManifest,omitempty"`
@@ -131,7 +131,7 @@ type GlideinSet struct {
 
 //+kubebuilder:object:root=true
 
-// GlideinManagerPilotSetList contains a list of GlideinManagerPilotSet
+// GlideinSetList contains a list of GlideinSets
 type GlideinSetList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -139,5 +139,5 @@ type GlideinSetList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&GlideinManagerPilotSet{}, &GlideinSet{}, &GlideinManagerPilotSetList{}, &GlideinSetList{})
+	SchemeBuilder.Register(&GlideinSetCollection{}, &GlideinSet{}, &GlideinSetCollectionList{}, &GlideinSetList{})
 }

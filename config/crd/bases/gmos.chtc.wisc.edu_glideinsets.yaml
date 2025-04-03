@@ -17,8 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GlideinManagerPilotSet is the Schema for the glideinmanagerpilotsets
-          API
+        description: GlideinSet is the Schema for the glideisets API
         properties:
           apiVersion:
             description: |-
@@ -118,7 +117,7 @@ spec:
             - path
             type: object
           spec:
-            description: Spec for the GlideinSet as determined by its parent GlideinManagerPilotSet
+            description: Spec for the GlideinSet as determined by its parent GlideinSetCollection
             properties:
               glideinManagerUrl:
                 description: |-
@@ -243,8 +242,7 @@ spec:
             - name
             type: object
           status:
-            description: GlideinManagerPilotSetStatus defines the observed state of
-              GlideinManagerPilotSet
+            description: GlideinSetStatus defines the observed state of GlideinSet
             type: object
         type: object
     served: true
