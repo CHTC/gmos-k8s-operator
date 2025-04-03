@@ -1,5 +1,5 @@
 apiVersion: gmos.chtc.wisc.edu/v1alpha1
-kind: GlideinManagerPilotSet
+kind: GlideinSetCollection
 metadata:
   labels:
     app.kubernetes.io/name: glideinmanagerpilotset

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
-  name: glideinmanagerpilotsets.gmos.chtc.wisc.edu
+  name: glideinsetcollections.gmos.chtc.wisc.edu
 spec:
   group: gmos.chtc.wisc.edu
   names:
-    kind: GlideinManagerPilotSet
-    listKind: GlideinManagerPilotSetList
-    plural: glideinmanagerpilotsets
-    singular: glideinmanagerpilotset
+    kind: GlideinSetCollection
+    listKind: GlideinSetCollectionList
+    plural: glideinsetcollections
+    singular: glideinsetcollection
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GlideinManagerPilotSet is the Schema for the glideinmanagerpilotsets
+        description: GlideinSetCollection is the Schema for the glideinsetcollection
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: GlideinManagerPilotSetSpec defines the desired state of GlideinManagerPilotSet
+            description: GlideinSetCollectionSpec defines the desired state of GlideinSetCollection
             properties:
               glideinManagerUrl:
                 description: |-
@@ -1936,8 +1936,8 @@ spec:
             - glideinSets
             type: object
           status:
-            description: GlideinManagerPilotSetStatus defines the observed state of
-              GlideinManagerPilotSet
+            description: GlideinSetCollectionStatus defines the observed state of
+              the GlideinSetCollection
             type: object
         type: object
     served: true
