@@ -103,6 +103,7 @@ func (r *GlideinSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			log.Error(err, "Failed to update CRD to remove finalizer")
 			return
 		}
+		return
 	}
 
 	// Add the deployment and secrets for the pilotSet if it doesn't already exist
@@ -230,7 +231,8 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
 
 	log.Info("Updating Deployment with changes to CR")
-	if err := applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet}); err != nil {
+	err := applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet})
+	if err != nil {
 		log.Error(err, "Unable to update Deployment for GlideinSet")
 		return err
 	}
@@ -241,13 +243,16 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	}
 
 	log.Info("Updating Deployment with changes to RemoteManifest")
-	if err := applyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest}); !updateErrOk(err) {
+	updater := &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest, collectorUrl: glideinSet.Spec.LocalCollectorUrl}
+	err = applyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, updater)
+	if !updateErrOk(err) {
 		log.Error(err, "Unable to update Deployment from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
 		return err
 	}
 
 	log.Info("Updating Data Secret with changes to RemoteManifest")
-	if err := applyUpdateToResource(glState, RNData, &corev1.Secret{}, &DataSecretGitUpdater{manifest: glideinSet.RemoteManifest}); !updateErrOk(err) {
+	err = applyUpdateToResource(glState, RNData, &corev1.Secret{}, &DataSecretGitUpdater{manifest: glideinSet.RemoteManifest})
+	if !updateErrOk(err) {
 		log.Error(err, "Unable to update Secret from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
 		return err
 	}

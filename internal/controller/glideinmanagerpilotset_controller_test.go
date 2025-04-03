@@ -18,7 +18,7 @@ package controller
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -107,35 +108,188 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 				Namespace: resource.GetNamespace(),
 			}
 
-			Eventually(func(g Gomega) {
-				configMap := &corev1.ConfigMap{}
-				err = k8sClient.Get(ctx, collectorConfigNamespacedName, configMap)
-				Expect(err).NotTo(HaveOccurred())
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, collectorConfigNamespacedName, configMap)
+			Expect(err).NotTo(HaveOccurred())
 
-				sigKey := &corev1.Secret{}
-				err = k8sClient.Get(ctx, collectorSigKeyNamespacedName, sigKey)
-				Expect(err).NotTo(HaveOccurred())
+			sigKey := &corev1.Secret{}
+			err = k8sClient.Get(ctx, collectorSigKeyNamespacedName, sigKey)
+			Expect(err).NotTo(HaveOccurred())
 
-				collector := &appsv1.Deployment{}
-				err = k8sClient.Get(ctx, collectorNamespacedName, collector)
-				Expect(err).NotTo(HaveOccurred())
+			collector := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, collectorNamespacedName, collector)
+			Expect(err).NotTo(HaveOccurred())
 
-				service := &corev1.Service{}
-				err = k8sClient.Get(ctx, collectorNamespacedName, service)
-				Expect(err).NotTo(HaveOccurred())
-
-			}, 30*time.Second, 1*time.Second).Should(Succeed())
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, collectorNamespacedName, service)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should not create a GlideinSet", func() {
-			Eventually(func(g Gomega) {
-				glideinSets := gmosv1alpha1.GlideinSetList{}
-				matchingLabels := client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": resourceName})
-				err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"), matchingLabels)
+			glideinSets := gmosv1alpha1.GlideinSetList{}
+			matchingLabels := client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": resourceName})
+			err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"), matchingLabels)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(len(glideinSets.Items)).To(Equal(0))
-			}, 30*time.Second, 1*time.Second).Should(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(glideinSets.Items)).To(Equal(0))
+		})
+	})
+	Context("When reconciling a resource with Prometheus monitoring", Ordered, func() {
+		const resourceName = "test-prometheus-pilot"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+		glideinmanagerpilotset := &gmosv1alpha1.GlideinManagerPilotSet{}
+		glideinManagerResource := &gmosv1alpha1.GlideinManagerPilotSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName,
+				Namespace: "default",
+			},
+			Spec: gmosv1alpha1.GlideinManagerPilotSetSpec{
+				GlideinManagerUrl: "localhost:8082",
+				Prometheus: gmosv1alpha1.PrometheusMonitoringSpec{
+					ServiceAccount: "default",
+					StorageVolume: &corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "sample-claim",
+						},
+					},
+				},
+				GlideinSets: []gmosv1alpha1.GlideinSetSpec{},
+			},
+		}
+
+		pushGatewayName := types.NamespacedName{
+			Name:      resourceName + string(RNPrometheusPushgateway),
+			Namespace: "default",
+		}
+
+		prometheusName := types.NamespacedName{
+			Name:      resourceName + string(RNPrometheus),
+			Namespace: "default",
+		}
+
+		BeforeAll(func() {
+			By("creating the custom resource for the Kind GlideinManagerPilotSet with Prometheus Config")
+			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
+			if err != nil && errors.IsNotFound(err) {
+				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
+			}
+		})
+		AfterAll(func() {
+			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Cleanup the specific resource instance GlideinManagerPilotSet")
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should reconcile the resource", func() {
+			By("Reconciling the created resource")
+			controllerReconciler := &GlideinManagerPilotSetReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Should create a Prometheus server", func() {
+			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating a PushGateway Deployment and Service")
+			pushGatewayDep := appsv1.Deployment{}
+			err = k8sClient.Get(ctx, pushGatewayName, &pushGatewayDep)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pushGatewayDep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("gmos.chtc.wisc.edu/app", PUSHGATEWAY))
+
+			pushGatewaySvc := corev1.Service{}
+			err = k8sClient.Get(ctx, pushGatewayName, &pushGatewaySvc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pushGatewaySvc.Spec.Selector).To(HaveKeyWithValue("gmos.chtc.wisc.edu/app", PUSHGATEWAY))
+
+			By("Creating a configmap for Prometheus that specifies the Pushgateway and Collector as scrape targets")
+			promConfigMap := corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, prometheusName, &promConfigMap)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promConfigMap.Data).To(HaveKey("prometheus.yaml"))
+
+			var cfgMap map[string]interface{}
+			err = yaml.Unmarshal([]byte(promConfigMap.Data["prometheus.yaml"]), &cfgMap)
+			Expect(err).NotTo(HaveOccurred())
+			// TODO might want to make a struct for this rather than mangling anonymous interfaces
+			scrapeTargets := cfgMap["scrape_configs"].([]interface{})[0].(map[string]interface{})["static_configs"].([]interface{})
+			var pushgatewayTarget = scrapeTargets[0].(map[string]interface{})["targets"].([]interface{})[0].(string)
+			var collectorTarget = scrapeTargets[1].(map[string]interface{})["targets"].([]interface{})[0].(string)
+			Expect(pushgatewayTarget).To(ContainSubstring(RNPrometheusPushgateway.nameFor(resource)))
+			Expect(collectorTarget).To(ContainSubstring(RNCollector.nameFor(resource)))
+
+			By("Creating a Prometheus Deployment and Service")
+			promDep := appsv1.Deployment{}
+			err = k8sClient.Get(ctx, prometheusName, &promDep)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promDep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("gmos.chtc.wisc.edu/app", PROMETHEUS))
+
+			promSvc := corev1.Service{}
+			err = k8sClient.Get(ctx, prometheusName, &promSvc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promSvc.Spec.Selector).To(HaveKeyWithValue("gmos.chtc.wisc.edu/app", PROMETHEUS))
+
+			By("Setting the Prometheus storage volume as specified in the custom resource")
+			depPVC := promDep.Spec.Template.Spec.Volumes[1].PersistentVolumeClaim
+			expectedPVC := glideinManagerResource.Spec.Prometheus.StorageVolume.PersistentVolumeClaim
+			Expect(depPVC).To(Equal(expectedPVC))
+		})
+
+		It("Should add a kubelet scrape config when given a non-default service account", func() {
+			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+			resource.Spec.Prometheus.ServiceAccount = "sample-account"
+
+			k8sClient.Update(ctx, resource)
+
+			By("re-reconciling the updated resource")
+			controllerReconciler := &GlideinManagerPilotSetReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding a service account to the deployment")
+			promDep := appsv1.Deployment{}
+			err = k8sClient.Get(ctx, prometheusName, &promDep)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promDep.Spec.Template.Spec.ServiceAccountName).To(Equal(resource.Spec.Prometheus.ServiceAccount))
+
+			By("Adding adding a Kubernetes Service Discovery scrape config to the prometheus configmap")
+			promConfigMap := corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, prometheusName, &promConfigMap)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promConfigMap.Data).To(HaveKey("prometheus.yaml"))
+
+			var cfgMap map[string]interface{}
+			err = yaml.Unmarshal([]byte(promConfigMap.Data["prometheus.yaml"]), &cfgMap)
+			Expect(err).NotTo(HaveOccurred())
+			// TODO might want to make a struct for this rather than mangling anonymous interfaces
+			sdConfigs := cfgMap["scrape_configs"].([]interface{})[0].(map[string]interface{})["kubernetes_sd_configs"].([]interface{})
+			sdConfig := sdConfigs[0].(map[string]interface{})["role"].(string)
+			Expect(sdConfig).To(Equal("node"))
+
 		})
 	})
 
@@ -190,7 +344,6 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		})
 
 		AfterAll(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &gmosv1alpha1.GlideinManagerPilotSet{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
@@ -213,24 +366,24 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 		})
 
 		It("should create a GlideinSet", func() {
-			Eventually(func(g Gomega) {
-				glideinSet := &gmosv1alpha1.GlideinSet{}
-				err := k8sClient.Get(ctx, glideinSetNamespacedName, glideinSet)
-				Expect(err).NotTo(HaveOccurred())
-				// Expect that the proper fields were copied from the GlideinManagerPilotSet into the GlideinSet
-				By("Using the schema from the parent GlideinManagerPilotSet")
-				spec := glideinSet.Spec
-				baseSpec := glideinManagerResource.Spec
+			glideinSet := &gmosv1alpha1.GlideinSet{}
+			err := k8sClient.Get(ctx, glideinSetNamespacedName, glideinSet)
+			Expect(err).NotTo(HaveOccurred())
+			// Expect that the proper fields were copied from the GlideinManagerPilotSet into the GlideinSet
+			By("Using the schema from the parent GlideinManagerPilotSet")
+			spec := glideinSet.Spec
+			baseSpec := glideinManagerResource.Spec
 
-				Expect(spec.GlideinManagerUrl).Should(Equal(baseSpec.GlideinManagerUrl))
-				Expect(spec.Size).Should(Equal(baseSpec.GlideinSets[0].Size))
-				Expect(spec.PriorityClassName).Should(Equal(baseSpec.GlideinSets[0].PriorityClassName))
-				Expect(spec.NodeSelector).Should(Equal(baseSpec.GlideinSets[0].NodeSelector))
+			collectorSvcName := fmt.Sprintf("%v.%v.svc.cluster.local", resourceName+string(RNCollector), "default")
+			Expect(spec.LocalCollectorUrl).Should(Equal(collectorSvcName))
+			Expect(spec.GlideinManagerUrl).Should(Equal(baseSpec.GlideinManagerUrl))
+			Expect(spec.Size).Should(Equal(baseSpec.GlideinSets[0].Size))
+			Expect(spec.PriorityClassName).Should(Equal(baseSpec.GlideinSets[0].PriorityClassName))
+			Expect(spec.NodeSelector).Should(Equal(baseSpec.GlideinSets[0].NodeSelector))
 
-				// Default equality doesn't appear to work here, need to use the custom resource.Quantity equals
-				Expect(spec.Resources.Requests.Cpu().Equal(*baseSpec.GlideinSets[0].Resources.Requests.Cpu())).Should(BeTrue())
-				Expect(spec.Resources.Requests.Memory().Equal(*baseSpec.GlideinSets[0].Resources.Requests.Memory())).Should(BeTrue())
-			}, 30*time.Second, 1*time.Second).Should(Succeed())
+			// Default equality doesn't appear to work here, need to use the custom resource.Quantity equals
+			Expect(spec.Resources.Requests.Cpu().Equal(*baseSpec.GlideinSets[0].Resources.Requests.Cpu())).Should(BeTrue())
+			Expect(spec.Resources.Requests.Memory().Equal(*baseSpec.GlideinSets[0].Resources.Requests.Memory())).Should(BeTrue())
 		})
 		It("should modify GlideinSets when the base spec is changed", func() {
 			pilotSet := gmosv1alpha1.GlideinManagerPilotSet{}
@@ -263,20 +416,18 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(func(g Gomega) {
-				glideinSet := &gmosv1alpha1.GlideinSet{}
-				err := k8sClient.Get(ctx, glideinSetNamespacedName, glideinSet)
-				Expect(err).NotTo(HaveOccurred())
-				// Expect that the proper fields were copied from the GlideinManagerPilotSet into the GlideinSet
-				By("Propegating the updates to the schema from the parent GlideinManagerPilotSet")
-				spec := glideinSet.Spec
+			glideinSet := &gmosv1alpha1.GlideinSet{}
+			err = k8sClient.Get(ctx, glideinSetNamespacedName, glideinSet)
+			Expect(err).NotTo(HaveOccurred())
+			// Expect that the proper fields were copied from the GlideinManagerPilotSet into the GlideinSet
+			By("Propegating the updates to the schema from the parent GlideinManagerPilotSet")
+			spec := glideinSet.Spec
 
-				Expect(spec.GlideinManagerUrl).Should(Equal(newManagerUrl))
-				Expect(spec.Size).Should(Equal(newSize))
-				// Default equality doesn't appear to work here, need to use the custom resource.Quantity equals
-				Expect(spec.Resources.Requests.Cpu().Equal(*newResources.Requests.Cpu())).Should(BeTrue())
-				Expect(spec.Resources.Requests.Memory().Equal(*newResources.Requests.Memory())).Should(BeTrue())
-			}, 30*time.Second, 1*time.Second).Should(Succeed())
+			Expect(spec.GlideinManagerUrl).Should(Equal(newManagerUrl))
+			Expect(spec.Size).Should(Equal(newSize))
+			// Default equality doesn't appear to work here, need to use the custom resource.Quantity equals
+			Expect(spec.Resources.Requests.Cpu().Equal(*newResources.Requests.Cpu())).Should(BeTrue())
+			Expect(spec.Resources.Requests.Memory().Equal(*newResources.Requests.Memory())).Should(BeTrue())
 		})
 
 		It("should delete GlideinSets when removed from the base spec", func() {
@@ -297,14 +448,12 @@ var _ = Describe("GlideinManagerPilotSet Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Eventually(func(g Gomega) {
-				glideinSets := gmosv1alpha1.GlideinSetList{}
-				matchingLabels := client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": resourceName})
-				err := k8sClient.List(ctx, &glideinSets, client.InNamespace("default"), matchingLabels)
+			glideinSets := gmosv1alpha1.GlideinSetList{}
+			matchingLabels := client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": resourceName})
+			err = k8sClient.List(ctx, &glideinSets, client.InNamespace("default"), matchingLabels)
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(len(glideinSets.Items)).To(Equal(0))
-			}, 30*time.Second, 1*time.Second).Should(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(glideinSets.Items)).To(Equal(0))
 		})
 	})
 })

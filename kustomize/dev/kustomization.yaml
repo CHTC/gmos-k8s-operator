@@ -3,6 +3,7 @@ namespace: dev
 bases:
   - ../base/gmos
   - ../base/operator-role
+  - ../base/prometheus-role
 
 resources:
   - namespace.yaml

@@ -207,5 +207,6 @@ func removeCollectorClient(resource metav1.Object) {
 	if existingClient, exists := collectorClients[namespacedName]; exists {
 		log.Info(fmt.Sprintf("Removing collector client for namespaced name %v", namespacedName))
 		existingClient.stopPolling()
+		delete(collectorClients, namespacedName)
 	}
 }
