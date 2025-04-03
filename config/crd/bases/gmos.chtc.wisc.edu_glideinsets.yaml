@@ -126,8 +126,9 @@ spec:
                   set of pilots.
                 type: string
               localCollectorUrl:
-                description: localCollectorURL is the url of the htcondor collector
-                  set up by the operator in the same namespace as the glideins
+                description: |-
+                  localCollectorURL is the url of the htcondor collector set up by the operator
+                  in the same namespace as the glideins
                 type: string
               name:
                 description: Name of this glidein deployment
