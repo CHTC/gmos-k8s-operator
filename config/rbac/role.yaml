@@ -65,7 +65,7 @@ rules:
 - apiGroups:
   - gmos.chtc.wisc.edu
   resources:
-  - glideinmanagerpilotsets
+  - glideinsetcollections
   verbs:
   - create
   - delete
@@ -77,13 +77,13 @@ rules:
 - apiGroups:
   - gmos.chtc.wisc.edu
   resources:
-  - glideinmanagerpilotsets/finalizers
+  - glideinsetcollections/finalizers
   verbs:
   - update
 - apiGroups:
   - gmos.chtc.wisc.edu
   resources:
-  - glideinmanagerpilotsets/status
+  - glideinsetcollections/status
   verbs:
   - get
   - patch

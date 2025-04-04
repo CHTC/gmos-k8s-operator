@@ -46,11 +46,11 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		glideinmanagerpilotset := &gmosv1alpha1.GlideinSetCollection{}
+		glideinsetcollection := &gmosv1alpha1.GlideinSetCollection{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind GlideinSetCollection with no GlideinSets")
-			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
+			err := k8sClient.Get(ctx, typeNamespacedName, glideinsetcollection)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &gmosv1alpha1.GlideinSetCollection{
 					ObjectMeta: metav1.ObjectMeta{
@@ -143,7 +143,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		glideinmanagerpilotset := &gmosv1alpha1.GlideinSetCollection{}
+		glideinsetcollection := &gmosv1alpha1.GlideinSetCollection{}
 		glideinManagerResource := &gmosv1alpha1.GlideinSetCollection{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
@@ -175,7 +175,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 
 		BeforeAll(func() {
 			By("creating the custom resource for the Kind GlideinSetCollection with Prometheus Config")
-			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
+			err := k8sClient.Get(ctx, typeNamespacedName, glideinsetcollection)
 			if err != nil && errors.IsNotFound(err) {
 				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
 			}
@@ -310,7 +310,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			Name:      resourceName + "-" + glideinSetName,
 			Namespace: "default",
 		}
-		glideinmanagerpilotset := &gmosv1alpha1.GlideinSetCollection{}
+		glideinsetcollection := &gmosv1alpha1.GlideinSetCollection{}
 		glideinManagerResource := &gmosv1alpha1.GlideinSetCollection{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
@@ -337,7 +337,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 
 		BeforeAll(func() {
 			By("creating the custom resource for the Kind GlideinSetCollection with one GlideinSets")
-			err := k8sClient.Get(ctx, typeNamespacedName, glideinmanagerpilotset)
+			err := k8sClient.Get(ctx, typeNamespacedName, glideinsetcollection)
 			if err != nil && errors.IsNotFound(err) {
 				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
 			}
