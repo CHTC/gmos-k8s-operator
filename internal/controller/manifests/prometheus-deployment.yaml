@@ -8,14 +8,14 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/created-by: controller-manager
-      app.kubernetes.io/instance: glideinsetcollection-sample
+      app.kubernetes.io/instance: "{{.ObjectMeta.Name}}"
       app.kubernetes.io/name: GlideinSetCollection
       gmos.chtc.wisc.edu/app: prometheus
   template:
     metadata:
       labels:
         app.kubernetes.io/created-by: controller-manager
-        app.kubernetes.io/instance: glideinsetcollection-sample
+        app.kubernetes.io/instance: "{{.ObjectMeta.Name}}"
         app.kubernetes.io/name: GlideinSetCollection
         gmos.chtc.wisc.edu/app: prometheus
     spec:

@@ -77,6 +77,9 @@ func applyUpdateToResource[T client.Object](
 ) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.nameFor(reconcileState.resource)
+	if resource.GetName() != "" {
+		name = resource.GetName()
+	}
 	log.Info("Applying updates to resource " + name)
 	err := reconcileState.reconciler.getClient().Get(
 		reconcileState.ctx,

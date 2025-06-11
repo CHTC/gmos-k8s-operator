@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/created-by: controller-manager
+    app.kubernetes.io/instance: "{{ .ObjectMeta.Name }}"
+    app.kubernetes.io/name: GlideinSetCollection
+  name: "{{ .ObjectMeta.Name }}-prometheus-pushgateway"
+  namespace: "{{ .ObjectMeta.Namespace }}"
+spec:
+  ports:
+  - name: prometheus-pushgateway
+    port: 9091
+    protocol: TCP
+    targetPort: 9091
+  selector:
+    gmos.chtc.wisc.edu/app: prometheus-pushgateway

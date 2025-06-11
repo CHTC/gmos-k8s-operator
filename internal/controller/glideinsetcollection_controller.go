@@ -225,44 +225,20 @@ func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.
 	log := log.FromContext(ctx)
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
-	// Prometheus monitoring resources
-	log.Info("Creating Prometheus PushGateway if not exists")
-	if err := createResourceIfNotExists(psState, RNPrometheusPushgateway, &appsv1.Deployment{}, &PrometheusPushgatewayDeploymentCreator{}); err != nil {
-		return err
-	}
-
-	log.Info("Creating Prometheus PushGateway Service if not exists")
-	if err := createResourceIfNotExists(psState, RNPrometheusPushgateway, &corev1.Service{}, &PrometheusPushgatewayServiceCreator{}); err != nil {
-		return err
-	}
-
-	log.Info("Updating Prometheus ConfigMap if exists, creating otherwise")
-	configEditor := &PrometheusConfigMapEditor{pilotSet: pilotSet}
-	if err := applyUpdateToResource(psState, RNPrometheus, &corev1.ConfigMap{}, configEditor); apierrors.IsNotFound(err) {
-		if err := createResourceIfNotExists(psState, RNPrometheus, &corev1.ConfigMap{}, configEditor); err != nil {
+	for _, templateYaml := range []string{promPushgateway, promPushgatewayService, promConfigYaml, promDeployYaml, promService} {
+		log.Info("Updating Prometheus Deployment if exists, creating otherwise")
+		genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: templateYaml}
+		val, err := genericEditor.getInitialResourceValue()
+		if err != nil {
 			return err
 		}
-	} else if err != nil {
-		return err
-	}
-
-	log.Info("Updating Prometheus Deployment if exists, creating otherwise")
-	genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: promDeployYaml}
-	val, err := genericEditor.getInitialResourceValue()
-	if err != nil {
-		return err
-	}
-	if err := applyUpdateToResource(psState, RNPrometheus, val, genericEditor); apierrors.IsNotFound(err) {
-		if err := createResourceIfNotExists(psState, RNPrometheus, val, genericEditor); err != nil {
+		if err := applyUpdateToResource(psState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
+			if err := createResourceIfNotExists(psState, RNBase, val, genericEditor); err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
-	} else if err != nil {
-		return err
-	}
-
-	log.Info("Creating Prometheus Service if not exists")
-	if err := createResourceIfNotExists(psState, RNPrometheus, &corev1.Service{}, &PrometheusServiceCreator{}); err != nil {
-		return err
 	}
 
 	return nil
