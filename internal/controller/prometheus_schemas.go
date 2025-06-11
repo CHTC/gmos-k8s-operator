@@ -11,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	k8sYaml "sigs.k8s.io/yaml"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -125,9 +126,9 @@ func (pe *PrometheusConfigMapEditor) updateResourceValue(r Reconciler, config *c
 //go:embed manifests/prometheus-deployment.yaml
 var promDeployYaml string
 
-type PrometheusDeploymentEditor struct {
-	pilotSet   *v1alpha1.GlideinSetCollection
-	monitoring v1alpha1.PrometheusMonitoringSpec
+type TemplatedResourceEditor struct {
+	templateYaml string
+	templateData any
 }
 
 var formatFuncs map[string]interface{} = map[string]interface{}{
@@ -142,33 +143,48 @@ var formatFuncs map[string]interface{} = map[string]interface{}{
 	},
 }
 
-func (pe *PrometheusDeploymentEditor) setResourceValue(
-	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
-	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(promDeployYaml)
+func (te *TemplatedResourceEditor) getInitialResourceValue() (client.Object, error) {
+	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(te.templateYaml)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, te.templateData); err != nil {
+		return nil, err
+	}
+
+	decode := scheme.Codecs.UniversalDeserializer().Decode
+	obj, _, err := decode(buf.Bytes(), nil, nil)
+	return obj.(client.Object), err
+}
+
+func (te *TemplatedResourceEditor) setResourceValue(
+	r Reconciler, resource metav1.Object, obj client.Object) error {
+	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(te.templateYaml)
 	if err != nil {
 		return err
 	}
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, pe.pilotSet); err != nil {
+	if err := tmpl.Execute(&buf, te.templateData); err != nil {
 		return err
 	}
 
 	decode := scheme.Codecs.UniversalDeserializer().Decode
-	_, _, err = decode(buf.Bytes(), nil, dep)
+	_, _, err = decode(buf.Bytes(), nil, obj)
 	return err
 }
 
-func (pe *PrometheusDeploymentEditor) updateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
-	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(promDeployYaml)
+func (te *TemplatedResourceEditor) updateResourceValue(r Reconciler, obj client.Object) (bool, error) {
+	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(te.templateYaml)
 	if err != nil {
 		return false, err
 	}
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, pe.pilotSet); err != nil {
+	if err := tmpl.Execute(&buf, te.templateData); err != nil {
 		return false, err
 	}
 	decode := scheme.Codecs.UniversalDeserializer().Decode
-	_, _, err = decode(buf.Bytes(), nil, dep)
+	_, _, err = decode(buf.Bytes(), nil, obj)
 	return true, err
 }
 

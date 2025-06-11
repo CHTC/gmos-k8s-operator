@@ -247,9 +247,13 @@ func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.
 	}
 
 	log.Info("Updating Prometheus Deployment if exists, creating otherwise")
-	deploymentEditor := &PrometheusDeploymentEditor{pilotSet: pilotSet, monitoring: pilotSet.Spec.Prometheus}
-	if err := applyUpdateToResource(psState, RNPrometheus, &appsv1.Deployment{}, deploymentEditor); apierrors.IsNotFound(err) {
-		if err := createResourceIfNotExists(psState, RNPrometheus, &appsv1.Deployment{}, deploymentEditor); err != nil {
+	genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: promDeployYaml}
+	val, err := genericEditor.getInitialResourceValue()
+	if err != nil {
+		return err
+	}
+	if err := applyUpdateToResource(psState, RNPrometheus, val, genericEditor); apierrors.IsNotFound(err) {
+		if err := createResourceIfNotExists(psState, RNPrometheus, val, genericEditor); err != nil {
 			return err
 		}
 	} else if err != nil {

@@ -123,3 +123,46 @@ func getResourceValue[T client.Object](reconcileState *PilotSetReconcileState, r
 	}
 	return nil
 }
+
+// Create a new Kubernetes object:
+// 1. Check that a resource with the given name doesn't yet exist in the namespace
+// 2. Create an initial schema for the object in-memory
+// 3. Post the newly created object to k8s via the API
+func createRuntimeObjectIfNotExists(
+	reconcileState *PilotSetReconcileState,
+	resourceName ResourceName,
+	resource client.Object,
+	creator ResourceCreator[client.Object],
+) error {
+	log := log.FromContext(reconcileState.ctx)
+	name := resourceName.nameFor(reconcileState.resource)
+	err := reconcileState.reconciler.getClient().Get(
+		reconcileState.ctx,
+		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
+		resource)
+	if err == nil {
+		log.Info("Resource already exists, no action needed.")
+	} else if apierrors.IsNotFound(err) {
+		log.Info("Resource not found, creating it.")
+		resource.SetName(name)
+		resource.SetNamespace(reconcileState.resource.GetNamespace())
+		err := creator.setResourceValue(reconcileState.reconciler, reconcileState.resource, resource)
+		if err != nil {
+			log.Error(err, "Unable to set value for new resource")
+		}
+		err = ctrl.SetControllerReference(reconcileState.resource, resource, reconcileState.reconciler.getScheme())
+		if err != nil {
+			return err
+		}
+		err = reconcileState.reconciler.getClient().Create(reconcileState.ctx, resource)
+		if err != nil {
+			log.Error(err, "Unable to create resource")
+			return err
+		}
+		return nil
+	} else {
+		log.Error(err, "Unable to get resource")
+		return err
+	}
+	return nil
+}
