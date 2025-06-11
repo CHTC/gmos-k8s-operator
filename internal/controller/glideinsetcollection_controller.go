@@ -247,7 +247,7 @@ func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.
 	}
 
 	log.Info("Updating Prometheus Deployment if exists, creating otherwise")
-	deploymentEditor := &PrometheusDeploymentEditor{monitoring: pilotSet.Spec.Prometheus}
+	deploymentEditor := &PrometheusDeploymentEditor{pilotSet: pilotSet, monitoring: pilotSet.Spec.Prometheus}
 	if err := applyUpdateToResource(psState, RNPrometheus, &appsv1.Deployment{}, deploymentEditor); apierrors.IsNotFound(err) {
 		if err := createResourceIfNotExists(psState, RNPrometheus, &appsv1.Deployment{}, deploymentEditor); err != nil {
 			return err

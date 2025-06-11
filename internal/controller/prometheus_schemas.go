@@ -2,6 +2,8 @@ package controller
 
 import (
 	"bytes"
+	_ "embed"
+	"strings"
 
 	"text/template"
 
@@ -9,7 +11,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sYaml "sigs.k8s.io/yaml"
+
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 // Struct for string formatting the Prometheus Config file
@@ -117,83 +122,54 @@ func (pe *PrometheusConfigMapEditor) updateResourceValue(r Reconciler, config *c
 	return oldConfig != configYaml, nil
 }
 
+//go:embed manifests/prometheus-deployment.yaml
+var promDeployYaml string
+
 type PrometheusDeploymentEditor struct {
+	pilotSet   *v1alpha1.GlideinSetCollection
 	monitoring v1alpha1.PrometheusMonitoringSpec
+}
+
+var formatFuncs map[string]interface{} = map[string]interface{}{
+	"toYaml": func(input interface{}) (string, error) {
+		val, err := k8sYaml.Marshal(input)
+		return string(val), err
+	},
+	"nindent": func(indentCount int, input string) string {
+		indent := strings.Repeat(" ", indentCount)
+		lines := strings.SplitAfter(input, "\n")
+		return strings.Join(lines, indent)
+	},
 }
 
 func (pe *PrometheusDeploymentEditor) setResourceValue(
 	r Reconciler, resource metav1.Object, dep *appsv1.Deployment) error {
-	labelsMap := labelsForPilotSet(resource.GetName())
-	labelsMap["gmos.chtc.wisc.edu/app"] = PROMETHEUS
-
-	volumeSource := pe.monitoring.StorageVolume
-	if volumeSource == nil {
-		volumeSource = &corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		}
+	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(promDeployYaml)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, pe.pilotSet); err != nil {
+		return err
 	}
 
-	dep.Spec = appsv1.DeploymentSpec{
-		Replicas: &[]int32{1}[0],
-		Selector: &metav1.LabelSelector{
-			MatchLabels: labelsMap,
-		},
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: labelsMap,
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{
-					Image:           "prom/prometheus",
-					Name:            PROMETHEUS,
-					ImagePullPolicy: corev1.PullIfNotPresent,
-					Args: []string{
-						"--config.file=/etc/prometheus/prometheus.yaml",
-						"--storage.tsdb.path=/prometheus/",
-					},
-					Ports: []corev1.ContainerPort{{
-						ContainerPort: PROMETHEUS_PORT,
-					}},
-					VolumeMounts: []corev1.VolumeMount{{
-						Name:      "prometheus-config",
-						MountPath: "/etc/prometheus",
-					}, {
-						Name:      "prometheus-storage",
-						MountPath: "/prometheus/",
-					},
-					},
-				}},
-				Volumes: []corev1.Volume{{
-					Name: "prometheus-config",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: RNPrometheus.nameFor(resource),
-							},
-						},
-					},
-				}, {
-					Name:         "prometheus-storage",
-					VolumeSource: *volumeSource,
-				},
-				},
-				ServiceAccountName: pe.monitoring.ServiceAccount,
-			},
-		},
-	}
-	return nil
+	decode := scheme.Codecs.UniversalDeserializer().Decode
+	_, _, err = decode(buf.Bytes(), nil, dep)
+	return err
 }
 
-func (pu *PrometheusDeploymentEditor) updateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
-	volumeSource := pu.monitoring.StorageVolume
-	if volumeSource == nil {
-		volumeSource = &corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		}
+func (pe *PrometheusDeploymentEditor) updateResourceValue(r Reconciler, dep *appsv1.Deployment) (bool, error) {
+	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(promDeployYaml)
+	if err != nil {
+		return false, err
 	}
-	dep.Spec.Template.Spec.ServiceAccountName = pu.monitoring.ServiceAccount
-	dep.Spec.Template.Spec.Volumes[1].VolumeSource = *volumeSource
-	return true, nil
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, pe.pilotSet); err != nil {
+		return false, err
+	}
+	decode := scheme.Codecs.UniversalDeserializer().Decode
+	_, _, err = decode(buf.Bytes(), nil, dep)
+	return true, err
 }
 
 type PrometheusServiceCreator struct {
@@ -269,5 +245,9 @@ func (pc *PrometheusPushgatewayServiceCreator) setResourceValue(
 			},
 		},
 	}
+	return nil
+}
+
+func makePromDeployDirect() error {
 	return nil
 }
