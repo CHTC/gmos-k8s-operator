@@ -2,7 +2,9 @@ package controller
 
 import (
 	"bytes"
+	"embed"
 	_ "embed"
+	"io/fs"
 	"strings"
 
 	"text/template"
@@ -20,23 +22,9 @@ const PUSHGATEWAY = "prometheus-pushgateway"
 const PROMETHEUS_PORT = 9090
 const PUSHGATEWAY_PORT = 9091
 
-//go:embed manifests/prometheus-deployment.yaml
-var promDeployYaml string
-
-//go:embed manifests/prometheus-config.yaml
-var promConfigYaml string
-
-//go:embed manifests/prometheus-pushgateway.yaml
-var promPushgateway string
-
-//go:embed manifests/prometheus-pushgateway-service.yaml
-var promPushgatewayService string
-
-//go:embed manifests/prometheus-service.yaml
-var promService string
-
 type TemplatedResourceEditor struct {
 	templateYaml string
+	parsedYaml   []byte
 	templateData any
 }
 
@@ -52,8 +40,11 @@ var formatFuncs map[string]interface{} = map[string]interface{}{
 	},
 }
 
-func (te *TemplatedResourceEditor) getInitialResourceValue() (client.Object, error) {
-	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(te.templateYaml)
+func (te *TemplatedResourceEditor) getTemplatedYaml() ([]byte, error) {
+	if te.parsedYaml != nil {
+		return te.parsedYaml, nil
+	}
+	tmpl, err := template.New("").Funcs(formatFuncs).Parse(te.templateYaml)
 	if err != nil {
 		return nil, err
 	}
@@ -62,14 +53,23 @@ func (te *TemplatedResourceEditor) getInitialResourceValue() (client.Object, err
 		return nil, err
 	}
 
+	te.parsedYaml = buf.Bytes()
+	return te.parsedYaml, nil
+}
+
+func (te *TemplatedResourceEditor) getInitialResourceValue() (client.Object, error) {
+	parsed, err := te.getTemplatedYaml()
+	if err != nil {
+		return nil, err
+	}
 	decode := scheme.Codecs.UniversalDeserializer().Decode
-	obj, _, err := decode(buf.Bytes(), nil, nil)
+	obj, _, err := decode(parsed, nil, nil)
 	return obj.(client.Object), err
 }
 
 func (te *TemplatedResourceEditor) setResourceValue(
 	r Reconciler, resource metav1.Object, obj client.Object) error {
-	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(te.templateYaml)
+	tmpl, err := template.New("").Funcs(formatFuncs).Parse(te.templateYaml)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (te *TemplatedResourceEditor) setResourceValue(
 }
 
 func (te *TemplatedResourceEditor) updateResourceValue(r Reconciler, obj client.Object) (bool, error) {
-	tmpl, err := template.New("prometheusDeployment").Funcs(formatFuncs).Parse(te.templateYaml)
+	tmpl, err := template.New("").Funcs(formatFuncs).Parse(te.templateYaml)
 	if err != nil {
 		return false, err
 	}
@@ -95,4 +95,25 @@ func (te *TemplatedResourceEditor) updateResourceValue(r Reconciler, obj client.
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	_, _, err = decode(buf.Bytes(), nil, obj)
 	return true, err
+}
+
+// readManifestsFromFS reads all the yaml templates out of a given directory in an embed.FS
+func readManifestsFromFS(embedFS embed.FS, baseDir string) (yamlTemplates []string, err error) {
+	err = fs.WalkDir(embedFS, baseDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		} else if d.IsDir() {
+			return nil
+		}
+
+		content, err := embedFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		yamlTemplates = append(yamlTemplates, string(content))
+		return nil
+	})
+
+	return yamlTemplates, err
 }

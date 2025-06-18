@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
 
@@ -215,6 +216,9 @@ func createCollectorForPilotSet(r *GlideinSetCollectionReconciler, ctx context.C
 	return nil
 }
 
+//go:embed manifests/prometheus/*.yaml
+var monitoringManifests embed.FS
+
 // Create or update the Prometheus Monitoring Server and associated resources for a PilotSet
 // - A Secret containing the signing key for the Collector's tokens
 // - A ConfigMap containing config.d files for the Collector
@@ -225,7 +229,12 @@ func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.
 	log := log.FromContext(ctx)
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
-	for _, templateYaml := range []string{promPushgateway, promPushgatewayService, promConfigYaml, promDeployYaml, promService} {
+	// pre-read every file
+	yamlTemplates, err := readManifestsFromFS(monitoringManifests, ".")
+	if err != nil {
+		return err
+	}
+	for _, templateYaml := range yamlTemplates {
 		log.Info("Updating Prometheus Deployment if exists, creating otherwise")
 		genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: templateYaml}
 		val, err := genericEditor.getInitialResourceValue()
