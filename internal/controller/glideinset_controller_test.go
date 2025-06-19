@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var _ = Describe("GlideinSet Controller", Ordered, func() {
+var _ = Describe("GlideinSet Controller", Ordered, Focus, func() {
 	Context("When reconciling a GlideinSet with no upstream config", func() {
 		const resourceName = "test-unconfigured-glideinset"
 

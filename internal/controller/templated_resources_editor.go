@@ -66,7 +66,10 @@ func (te *TemplatedResourceEditor) getInitialResourceValue() (client.Object, err
 	}
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	obj, _, err := decode(parsed, nil, nil)
-	return obj.(client.Object), err
+	if err != nil {
+		return nil, err
+	}
+	return obj.(client.Object), nil
 }
 
 func (te *TemplatedResourceEditor) setResourceValue(

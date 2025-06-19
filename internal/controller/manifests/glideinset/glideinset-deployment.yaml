@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .ObjectMeta.Name }}
+  namespace: {{ .ObjectMeta.Namespace }}
+spec:
+  replicas: {{ .Spec.Size }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/created-by: controller-manager
+      app.kubernetes.io/instance: {{ .ObjectMeta.Name }}
+      app.kubernetes.io/name: GlideinSetCollection
+      gmos.chtc.wisc.edu/app: pilot
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/created-by: controller-manager
+        app.kubernetes.io/instance: {{.ObjectMeta.Name}}
+        app.kubernetes.io/name: GlideinSetCollection
+        gmos.chtc.wisc.edu/app: pilot
+        {{ if .RemoteManifest }}
+        gmos.chtc.wisc.edu/git-hash: {{ .RemoteManifest.CurrentCommit }}
+        {{ end }}
+    spec:
+      containers:
+      - name: backfill
+        {{ if .RemoteManifest }}
+
+        {{ if .RemoteManifest.Command }}
+        command:
+          {{ .RemoteManifest.Command | toYaml }}
+        {{end}}
+
+        env:
+          {{ .RemoteManifest.Env | toYaml }}
+        image: {{ .RemoteManifest.Image }}
+        {{ else }}
+
+        image: alpine:latest
+        
+        {{ end }}
+        resources:
+          {{ .Spec.Resources | toYaml }}
+        securityContext:
+          privileged: true
+        volumeMounts:
+        {{ if .RemoteManifest }}
+        - mountPath: {{ .RemoteManifest.Volume.Dst }}
+          name: gmos-data
+        {{ end }}
+        - mountPath: /etc/condor/tokens-orig.d/
+          name: gmos-secrets
+        - mountPath: /mnt/collector-tokens
+          name: collector-tokens
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: minikube
+      priorityClassName: low-priority
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      {{ if .RemoteManifest }}
+      securityContext:
+        fsGroup: {{ .RemoteManifest.Security.Group }}
+        runAsGroup: {{ .RemoteManifest.Security.Group }}
+        runAsNonRoot: true
+        runAsUser: {{ .RemoteManifest.Security.User }}
+      {{ end }}
+      tolerations:
+        {{ .Spec.Tolerations | toYaml }}
+      volumes:
+      - name: gmos-data
+        secret:
+          defaultMode: 420
+          secretName: '{{.ObjectMeta.Name}}-data'
+      - name: gmos-secrets
+        secret:
+          defaultMode: 420
+          secretName: '{{.ObjectMeta.Name}}-tokens'
+      - name: collector-tokens
+        secret:
+          defaultMode: 420
+          secretName: '{{.ObjectMeta.Name}}-collector-tokens'
