@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{.ObjectMeta.Name}}-collector'
+  namespace: '{{.ObjectMeta.Namespace}}'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/created-by: controller-manager
+      app.kubernetes.io/instance: '{{.ObjectMeta.Name}}'
+      app.kubernetes.io/name: GlideinSetCollection
+      gmos.chtc.wisc.edu/app: collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/created-by: controller-manager
+        app.kubernetes.io/instance: '{{.ObjectMeta.Name}}'
+        app.kubernetes.io/name: GlideinSetCollection
+        gmos.chtc.wisc.edu/app: collector
+    spec:
+      containers:
+      - image: htcondor/base
+        imagePullPolicy: IfNotPresent
+        name: collector
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/condor/config.d/05-daemon.config
+          name: collector-config
+          subPath: 05-daemon.config
+        - mountPath: /etc/condor/passwords.d/
+          name: collector-sigkeys
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - cp /mnt/sigkeys/* /etc/condor/passwords.d/ && chmod 600 /etc/condor/passwords.d/*
+        image: htcondor/base
+        imagePullPolicy: IfNotPresent
+        name: key-permissions
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/condor/passwords.d/
+          name: collector-sigkeys
+        - mountPath: /mnt/sigkeys/
+          name: collector-sigkey-staging
+      restartPolicy: Always
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: '{{.ObjectMeta.Name}}-collector-cfg'
+        name: collector-config
+      - name: collector-sigkey-staging
+        secret:
+          defaultMode: 420
+          secretName: '{{.ObjectMeta.Name}}-collector-sigkey'
+      - emptyDir: {}
+        name: collector-sigkeys

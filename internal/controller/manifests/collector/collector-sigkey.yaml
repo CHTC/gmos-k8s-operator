@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+  NAMESPACE: '{{ .NamespaceToken | base64 }}'
+kind: Secret
+metadata:
+  name: '{{.ObjectMeta.Name}}-collector-sigkey'
+  namespace: '{{.ObjectMeta.Namespace}}'
+type: Opaque

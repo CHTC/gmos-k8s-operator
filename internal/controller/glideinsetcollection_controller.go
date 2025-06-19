@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -180,6 +179,9 @@ func updateErrOk(err error) bool {
 	return err == nil || apierrors.IsNotFound(err)
 }
 
+//go:embed manifests/collector/*.yaml
+var collectorManifests embed.FS
+
 // Create the Collector and associated resources for a PilotSet
 // - A Secret containing the signing key for the Collector's tokens
 // - A ConfigMap containing config.d files for the Collector
@@ -188,32 +190,33 @@ func updateErrOk(err error) bool {
 func createCollectorForPilotSet(r *GlideinSetCollectionReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSetCollection) error {
 	// Collector resources
 	log := log.FromContext(ctx)
+	log.Info("Creating Collector if not exists")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
-	log.Info("Creating Collector Signing Key if not exists")
-	err := createResourceIfNotExists(psState, RNCollectorSigkey, &corev1.Secret{}, &CollectorSigningKeyCreator{})
+	yamlTemplates, err := readManifestsFromFS(collectorManifests, ".")
 	if err != nil {
 		return err
 	}
 
-	log.Info("Creating Collector ConfigMap if not exists")
-	err = createResourceIfNotExists(psState, RNCollectorConfig, &corev1.ConfigMap{}, &CollectorConfigMapCreator{})
+	templateData, err := makeCollectorTemplate(pilotSet)
 	if err != nil {
 		return err
 	}
 
-	log.Info("Creating Collector Deployment if not exists")
-	err = createResourceIfNotExists(psState, RNCollector, &appsv1.Deployment{}, &CollectorDeploymentCreator{})
-	if err != nil {
-		return err
+	for _, templateYaml := range yamlTemplates {
+		genericEditor := &TemplatedResourceEditor{templateData: templateData, templateYaml: templateYaml}
+		val, err := genericEditor.getInitialResourceValue()
+		if err != nil {
+			return err
+		}
+
+		if err := createResourceIfNotExists(psState, RNBase, val, genericEditor); err != nil {
+			return err
+		}
 	}
 
-	log.Info("Creating Collector Service if not exists")
-	err = createResourceIfNotExists(psState, RNCollector, &corev1.Service{}, &CollectorServiceCreator{})
-	if err != nil {
-		return err
-	}
 	return nil
+
 }
 
 //go:embed manifests/prometheus/*.yaml
@@ -227,15 +230,14 @@ var monitoringManifests embed.FS
 func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSetCollection) error {
 	// Collector resources
 	log := log.FromContext(ctx)
+	log.Info("Updating Prometheus Deployment if exists, creating otherwise")
 	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
 
-	// pre-read every file
 	yamlTemplates, err := readManifestsFromFS(monitoringManifests, ".")
 	if err != nil {
 		return err
 	}
 	for _, templateYaml := range yamlTemplates {
-		log.Info("Updating Prometheus Deployment if exists, creating otherwise")
 		genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: templateYaml}
 		val, err := genericEditor.getInitialResourceValue()
 		if err != nil {

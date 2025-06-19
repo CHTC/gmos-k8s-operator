@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	_ "embed"
+	"encoding/base64"
 	"io/fs"
 	"strings"
 
@@ -38,6 +39,7 @@ var formatFuncs map[string]interface{} = map[string]interface{}{
 		lines := strings.SplitAfter(input, "\n")
 		return strings.Join(lines, indent)
 	},
+	"base64": base64.StdEncoding.EncodeToString,
 }
 
 func (te *TemplatedResourceEditor) getTemplatedYaml() ([]byte, error) {

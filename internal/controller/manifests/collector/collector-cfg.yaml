@@ -1,0 +1,7 @@
+apiVersion: v1
+data:
+  05-daemon.config: DAEMON_LIST = COLLECTOR
+kind: ConfigMap
+metadata:
+  name: '{{.ObjectMeta.Name}}-collector-cfg'
+  namespace: '{{.ObjectMeta.Namespace}}'

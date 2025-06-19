@@ -35,6 +35,9 @@ func createResourceIfNotExists[T client.Object](
 ) error {
 	log := log.FromContext(reconcileState.ctx)
 	name := resourceName.nameFor(reconcileState.resource)
+	if resource.GetName() != "" {
+		name = resource.GetName()
+	}
 	err := reconcileState.reconciler.getClient().Get(
 		reconcileState.ctx,
 		types.NamespacedName{Name: name, Namespace: reconcileState.resource.GetNamespace()},
@@ -42,7 +45,7 @@ func createResourceIfNotExists[T client.Object](
 	if err == nil {
 		log.Info("Resource already exists, no action needed.")
 	} else if apierrors.IsNotFound(err) {
-		log.Info("Resource not found, creating it.")
+		log.Info("Resource not found, creating it.", "resourceKind", resource.GetObjectKind().GroupVersionKind().Kind)
 		resource.SetName(name)
 		resource.SetNamespace(reconcileState.resource.GetNamespace())
 		err := creator.setResourceValue(reconcileState.reconciler, reconcileState.resource, resource)
