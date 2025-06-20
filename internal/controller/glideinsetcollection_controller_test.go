@@ -36,7 +36,7 @@ import (
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
-var _ = Describe("GlideinSetCollection Controller", func() {
+var _ = Describe("GlideinSetCollection Controller", Focus, func() {
 	Context("When reconciling a resource with no GlideinSets", func() {
 		const resourceName = "test-empty-pilotset"
 
@@ -290,6 +290,91 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			sdConfig := sdConfigs[0].(map[string]interface{})["role"].(string)
 			Expect(sdConfig).To(Equal("node"))
 
+		})
+	})
+	Context("When reconciling a resource with Fluentd logging", Ordered, func() {
+		const resourceName = "test-fluentd-pilot"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+		glideinsetcollection := &gmosv1alpha1.GlideinSetCollection{}
+		glideinManagerResource := &gmosv1alpha1.GlideinSetCollection{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName,
+				Namespace: "default",
+			},
+			Spec: gmosv1alpha1.GlideinSetCollectionSpec{
+				GlideinManagerUrl: "localhost:8083",
+				Fluentd: gmosv1alpha1.FluentdMonitoringSpec{
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							"cpu":    *resource.NewMilliQuantity(100, resource.DecimalSI),
+							"memory": *resource.NewMilliQuantity(100, resource.DecimalSI),
+						},
+					},
+					StorageVolume: &corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "sample-claim",
+						},
+					},
+				},
+				GlideinSets: []gmosv1alpha1.GlideinSetSpec{},
+			},
+		}
+
+		fluentdName := types.NamespacedName{
+			Name:      resourceName + "-fluentd",
+			Namespace: "default",
+		}
+
+		BeforeAll(func() {
+			By("creating the custom resource for the Kind GlideinSetCollection with Prometheus Config")
+			err := k8sClient.Get(ctx, typeNamespacedName, glideinsetcollection)
+			if err != nil && errors.IsNotFound(err) {
+				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
+			}
+		})
+
+		AfterAll(func() {
+			resource := &gmosv1alpha1.GlideinSetCollection{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Cleanup the specific resource instance GlideinSetCollection")
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should reconcile the resource", func() {
+			By("Reconciling the created resource")
+			controllerReconciler := &GlideinSetCollectionReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Should create a Fluentd server", func() {
+			resource := &gmosv1alpha1.GlideinSetCollection{}
+
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating a Fluentd Deployment and Service")
+			fluentdDep := appsv1.Deployment{}
+			err = k8sClient.Get(ctx, fluentdName, &fluentdDep)
+			Expect(err).NotTo(HaveOccurred())
+
+			fluentdSvc := corev1.Service{}
+			err = k8sClient.Get(ctx, fluentdName, &fluentdSvc)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 

@@ -38,6 +38,10 @@ type GlideinSetCollectionSpec struct {
 	// with the GlideinSet
 	Prometheus PrometheusMonitoringSpec `json:"prometheus,omitempty"`
 
+	// Set of configuration for the Fluentd instance that aggregates logs from the collector and glideins
+	// associated with teh GlideinSet
+	Fluentd FluentdMonitoringSpec `json:"fluentd,omitempty"`
+
 	// Collection of Glidein deployment specs
 	GlideinSets []GlideinSetSpec `json:"glideinSets"`
 }
@@ -47,6 +51,15 @@ type PrometheusMonitoringSpec struct {
 	// A Service Account name that allows the Prometheus instance to perform service discovery of
 	// glideins via the kubernetes API. Service Discovery is skipped if this field is left empty
 	ServiceAccount string `json:"serviceAccount,omitempty"`
+
+	// A VolumeSource for storing scraped Prometheus metrics
+	StorageVolume *corev1.VolumeSource `json:"storageVolumeSource,omitempty"`
+}
+
+// Configuration info for the Fluentd instance that aggregates glidein logs in a namespace
+type FluentdMonitoringSpec struct {
+	// resource requests and limits for Fluentd Log aggregator
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// A VolumeSource for storing scraped Prometheus metrics
 	StorageVolume *corev1.VolumeSource `json:"storageVolumeSource,omitempty"`
