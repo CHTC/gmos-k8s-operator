@@ -57,8 +57,6 @@ spec:
         - mountPath: /mnt/collector-tokens
           name: collector-tokens
       dnsPolicy: ClusterFirst
-      nodeSelector:
-        kubernetes.io/hostname: minikube
       priorityClassName: low-priority
       restartPolicy: Always
       schedulerName: default-scheduler
@@ -71,6 +69,8 @@ spec:
       {{ end }}
       tolerations:
         {{ .Spec.Tolerations | toYaml | nindent 8 }}
+      nodeSelector:
+        {{ .Spec.NodeSelector | toYaml | nindent 8 }}
       volumes:
       - name: gmos-data
         secret:

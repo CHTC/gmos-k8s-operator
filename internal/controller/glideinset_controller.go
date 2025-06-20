@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -187,6 +186,9 @@ func (pr *PilotSetReconcileState) applyTokensUpdate(glindeinToken string, pilotT
 	return errors.Join(err, err2)
 }
 
+//go:embed manifests/glideinset/glideinset-deployment.yaml
+var glideinsetDeployment string
+
 // Create the set of resources associated with a single Glidein deployment
 // - Secret containing access tokens from the local Collector
 // - Secret containing data files from the upstream Git repo
@@ -215,17 +217,8 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 		return err
 	}
 
-	log.Info("Creating Deployment if not exists")
-	err = createResourceIfNotExists(psState, RNBase, &appsv1.Deployment{}, &PilotSetDeploymentCreator{})
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
-
-//go:embed manifests/glideinset/glideinset-deployment.yaml
-var glideinsetDeployment string
 
 // Update the set of resources associated with a GlideinSet based on changes to its RemoteManifest
 // field supplied from the upstream Git repo
@@ -235,24 +228,6 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
 
 	log.Info("Updating Deployment with changes to CR")
-	// err := applyUpdateToResource(glState, "", &appsv1.Deployment{}, &DeploymentPilotSetUpdater{glideinSet: glideinSet})
-	// if err != nil {
-	// 	log.Error(err, "Unable to update Deployment for GlideinSet")
-	// 	return err
-	// }
-
-	// if glideinSet.RemoteManifest == nil {
-	// 	log.Info("RemoteManifest is unset for deployment.")
-	// 	return nil
-	// }
-
-	// log.Info("Updating Deployment with changes to RemoteManifest")
-	// updater := &DeploymentGitUpdater{manifest: glideinSet.RemoteManifest, collectorUrl: glideinSet.Spec.LocalCollectorUrl}
-	// err = applyUpdateToResource(glState, RNBase, &appsv1.Deployment{}, updater)
-	// if !updateErrOk(err) {
-	// 	log.Error(err, "Unable to update Deployment from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
-	// 	return err
-	// }
 
 	genericEditor := &TemplatedResourceEditor{templateData: glideinSet, templateYaml: glideinsetDeployment}
 	template, err := genericEditor.getTemplatedYaml()
