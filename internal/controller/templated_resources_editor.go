@@ -74,17 +74,12 @@ func (te *TemplatedResourceEditor) getInitialResourceValue() (client.Object, err
 
 func (te *TemplatedResourceEditor) setResourceValue(
 	r Reconciler, resource metav1.Object, obj client.Object) error {
-	tmpl, err := template.New("").Funcs(formatFuncs).Parse(te.templateYaml)
+	parsed, err := te.getTemplatedYaml()
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, te.templateData); err != nil {
-		return err
-	}
-
 	decode := scheme.Codecs.UniversalDeserializer().Decode
-	_, _, err = decode(buf.Bytes(), nil, obj)
+	_, _, err = decode(parsed, nil, obj)
 	return err
 }
 

@@ -19,7 +19,7 @@ spec:
         app.kubernetes.io/name: GlideinSetCollection
         gmos.chtc.wisc.edu/app: pilot
         {{ if .RemoteManifest }}
-        gmos.chtc.wisc.edu/git-hash: {{ .RemoteManifest.CurrentCommit }}
+        gmos.chtc.wisc.edu/git-hash: "{{ .RemoteManifest.CurrentCommit }}"
         {{ end }}
     spec:
       containers:
@@ -28,11 +28,11 @@ spec:
 
         {{ if .RemoteManifest.Command }}
         command:
-          {{ .RemoteManifest.Command | toYaml }}
+          {{ .RemoteManifest.Command | toYaml | nindent 10 }}
         {{end}}
 
         env:
-          {{ .RemoteManifest.Env | toYaml }}
+          {{ .RemoteManifest.Env | toYaml | nindent 10 }}
         image: {{ .RemoteManifest.Image }}
         {{ else }}
 
@@ -40,7 +40,7 @@ spec:
         
         {{ end }}
         resources:
-          {{ .Spec.Resources | toYaml }}
+          {{ .Spec.Resources | toYaml | nindent 10}}
         securityContext:
           privileged: true
         volumeMounts:
@@ -66,7 +66,7 @@ spec:
         runAsUser: {{ .RemoteManifest.Security.User }}
       {{ end }}
       tolerations:
-        {{ .Spec.Tolerations | toYaml }}
+        {{ .Spec.Tolerations | toYaml | nindent 8 }}
       volumes:
       - name: gmos-data
         secret:

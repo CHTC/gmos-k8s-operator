@@ -255,6 +255,12 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	// }
 
 	genericEditor := &TemplatedResourceEditor{templateData: glideinSet, templateYaml: glideinsetDeployment}
+	template, err := genericEditor.getTemplatedYaml()
+	if err != nil {
+		return err
+	}
+
+	log.Info("Templated yaml value", "template", string(template))
 	val, err := genericEditor.getInitialResourceValue()
 	if err != nil {
 		return err
