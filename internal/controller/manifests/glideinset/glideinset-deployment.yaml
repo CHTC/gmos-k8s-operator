@@ -3,6 +3,10 @@ kind: Deployment
 metadata:
   name: {{ .ObjectMeta.Name }}
   namespace: {{ .ObjectMeta.Namespace }}
+  {{ if .RemoteManifest }}
+  labels:
+    gmos.chtc.wisc.edu/git-hash: "{{ .RemoteManifest.CurrentCommit }}"
+  {{ end }}
 spec:
   replicas: {{ .Spec.Size }}
   selector:
@@ -18,9 +22,6 @@ spec:
         app.kubernetes.io/instance: {{.ObjectMeta.Name}}
         app.kubernetes.io/name: GlideinSetCollection
         gmos.chtc.wisc.edu/app: pilot
-        {{ if .RemoteManifest }}
-        gmos.chtc.wisc.edu/git-hash: "{{ .RemoteManifest.CurrentCommit }}"
-        {{ end }}
     spec:
       containers:
       - name: backfill
@@ -29,14 +30,17 @@ spec:
         {{ if .RemoteManifest.Command }}
         command:
           {{ .RemoteManifest.Command | toYaml | nindent 10 }}
-        {{end}}
-
+        {{ end }}
         env:
           {{ .RemoteManifest.Env | toYaml | nindent 10 }}
         image: {{ .RemoteManifest.Image }}
+
         {{ else }}
 
         image: alpine:latest
+        command:
+        - sleep
+        - infinity
         
         {{ end }}
         resources:
