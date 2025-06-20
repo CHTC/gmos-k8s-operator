@@ -54,39 +54,43 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 	return config, fmt.Errorf("no config found for namespace %v in manifest %+v", namespace, manifest)
 }
 
-// ResourceUpdater implementation that updates a Secret's data based on the
-// updated contents of config files in Git
-type DataSecretGitUpdater struct {
-	manifest *gmosv1alpha1.PilotSetNamespaceConfig
+type DataSecretTemplate struct {
+	metav1.ObjectMeta
+	Data map[string][]byte
 }
 
-func (du *DataSecretGitUpdater) updateResourceValue(r Reconciler, sec *corev1.Secret) (bool, error) {
-	// update a label on the deployment
-	manifest := du.manifest
+func makeDataSecretTemplate(glideinSet *gmosv1alpha1.GlideinSet) (template DataSecretTemplate, err error) {
+	template.ObjectMeta = metav1.ObjectMeta{
+		Name:      glideinSet.GetName(),
+		Namespace: glideinSet.GetNamespace(),
+	}
+	manifest := glideinSet.RemoteManifest
+	if manifest == nil {
+		return
+	}
 
 	listing, err := os.ReadDir(filepath.Join(manifest.RepoPath, manifest.Volume.Src))
 	if err != nil && errors.Is(err, os.ErrNotExist) {
 		// Corner case where operator hasn't cloned local copies yet, nothing to do
-		return false, nil
+		return
 
 	} else if err != nil {
-		return false, err
+		return
 	}
 
-	fileMap := make(map[string][]byte)
+	template.Data = make(map[string][]byte)
 	for _, entry := range listing {
 		if entry.IsDir() {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(manifest.RepoPath, manifest.Volume.Src, entry.Name()))
 		if err != nil {
-			return false, err
+			return template, err
 		}
-		fileMap[entry.Name()] = data
+		template.Data[entry.Name()] = data
 	}
-	sec.Data = fileMap
 
-	return true, nil
+	return
 }
 
 // ResourceUpdater implementation that updates a Secret's value based on the

@@ -189,6 +189,9 @@ func (pr *PilotSetReconcileState) applyTokensUpdate(glindeinToken string, pilotT
 //go:embed manifests/glideinset/glideinset-deployment.yaml
 var glideinsetDeployment string
 
+//go:embed manifests/glideinset/glideinset-data-secret.yaml
+var glideinsetDataSecret string
+
 // Create the set of resources associated with a single Glidein deployment
 // - Secret containing access tokens from the local Collector
 // - Secret containing data files from the upstream Git repo
@@ -205,12 +208,6 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 		return err
 	}
 
-	log.Info("Creating Data Secret if not exists")
-	err = createResourceIfNotExists(psState, RNData, &corev1.Secret{}, &EmptySecretCreator{})
-	if err != nil {
-		return err
-	}
-
 	log.Info("Creating Access Token Secret if not exists")
 	err = createResourceIfNotExists(psState, RNTokens, &corev1.Secret{}, &EmptySecretCreator{})
 	if err != nil {
@@ -223,6 +220,7 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 // Update the set of resources associated with a GlideinSet based on changes to its RemoteManifest
 // field supplied from the upstream Git repo
 // - Update the Deployment with the image, environment, and volume mounts supplied from Git
+// - Update the data secret with any changed files from Git
 func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, glideinSet *gmosv1alpha1.GlideinSet) error {
 	log := log.FromContext(ctx)
 	glState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: glideinSet}
@@ -230,12 +228,6 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	log.Info("Updating Deployment with changes to CR")
 
 	genericEditor := &TemplatedResourceEditor{templateData: glideinSet, templateYaml: glideinsetDeployment}
-	template, err := genericEditor.getTemplatedYaml()
-	if err != nil {
-		return err
-	}
-
-	log.Info("Templated yaml value", "template", string(template))
 	val, err := genericEditor.getInitialResourceValue()
 	if err != nil {
 		return err
@@ -249,15 +241,22 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 		return err
 	}
 
-	if glideinSet.RemoteManifest == nil {
-		log.Info("RemoteManifest is unset for deployment.")
-		return nil
+	log.Info("Updating Data Secret with changes to RemoteManifest")
+	templateData, err := makeDataSecretTemplate(glideinSet)
+	if err != nil {
+		return err
+	}
+	genericEditor = &TemplatedResourceEditor{templateData: templateData, templateYaml: glideinsetDataSecret}
+	val, err = genericEditor.getInitialResourceValue()
+	if err != nil {
+		return err
 	}
 
-	log.Info("Updating Data Secret with changes to RemoteManifest")
-	err = applyUpdateToResource(glState, RNData, &corev1.Secret{}, &DataSecretGitUpdater{manifest: glideinSet.RemoteManifest})
-	if !updateErrOk(err) {
-		log.Error(err, "Unable to update Secret from RemoteManifest for commit "+glideinSet.RemoteManifest.CurrentCommit)
+	if err := applyUpdateToResource(glState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
+		if err := createResourceIfNotExists(glState, RNBase, val, genericEditor); err != nil {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
 
