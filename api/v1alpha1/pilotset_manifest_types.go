@@ -1,5 +1,7 @@
 package v1alpha1
 
+import "path"
+
 // Config for a single namespace provided by an upstream glidein manager git repo
 type PilotSetNamespaceConfig struct {
 	Namespace    string               `yaml:"namespace" json:"namespace,omitempty"`
@@ -29,6 +31,11 @@ type PilotSetVolumeMount struct {
 type PilotSetSecretSource struct {
 	SecretName string `yaml:"secretName" json:"secretName"`
 	Dst        string `yaml:"dst" json:"dst"`
+}
+
+// helper func on PilotSetSecretSource to split the Dst field into path and filename
+func (ps PilotSetSecretSource) DstDir() string {
+	return path.Dir(ps.Dst)
 }
 
 // Config for the user and group that the Glidein container should run as

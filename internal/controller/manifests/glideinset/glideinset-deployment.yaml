@@ -51,9 +51,12 @@ spec:
         {{ if .RemoteManifest }}
         - mountPath: {{ .RemoteManifest.Volume.Dst }}
           name: gmos-data
-        {{ end }}
+        - mountPath: {{ .RemoteManifest.SecretSource.DstDir }}
+          name: gmos-secrets
+        {{ else }}
         - mountPath: /etc/condor/tokens-orig.d/
           name: gmos-secrets
+        {{ end }}
         - mountPath: /mnt/collector-tokens
           name: collector-tokens
       dnsPolicy: ClusterFirst

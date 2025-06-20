@@ -49,6 +49,6 @@ spec:
           name: "{{.ObjectMeta.Name}}-prometheus"
         name: prometheus-config
       {{- with .Spec.Prometheus.StorageVolume }}
-      - {{ toYaml . | nindent 8 }}
-        name: prometheus-storage
+      - name: prometheus-storage
+        {{ toYaml . | nindent 8 }}
       {{- end }}

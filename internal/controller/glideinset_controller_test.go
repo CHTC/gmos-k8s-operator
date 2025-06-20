@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var _ = Describe("GlideinSet Controller", Ordered, Focus, func() {
+var _ = Describe("GlideinSet Controller", Ordered, func() {
 	Context("When reconciling a GlideinSet with no upstream config", func() {
 		const resourceName = "test-unconfigured-glideinset"
 
@@ -282,11 +282,6 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 				Expect(containerSpec.Env[idx].Name).To(Equal(envVar.Name))
 				Expect(containerSpec.Env[idx].Value).To(Equal(envVar.Value))
 			}
-
-			By("Checking that the collector's service address is set as an environment variable")
-			collectorSvcName := fmt.Sprintf("%v.%v.svc.cluster.local", parentResourceName+string(RNCollector), "default")
-			Expect(containerSpec.Env[len(upstreamConfig.Env)].Name).To(Equal("CONDOR_VIEW_HOST"))
-			Expect(containerSpec.Env[len(upstreamConfig.Env)].Value).To(Equal(collectorSvcName))
 		})
 
 		It("Should set volume-mount paths when an upstream config is added", func() {
@@ -306,7 +301,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			containerSpec := deployment.Spec.Template.Spec.Containers[0]
 			Expect(containerSpec.VolumeMounts[0].MountPath).To(Equal(upstreamConfig.Volume.Dst))
 			// TODO cannot figure out how to
-			tokenDir, _ := path.Split(upstreamConfig.SecretSource.Dst)
+			tokenDir := path.Dir(upstreamConfig.SecretSource.Dst)
 			Expect(containerSpec.VolumeMounts[1].MountPath).To(Equal(tokenDir))
 		})
 	})

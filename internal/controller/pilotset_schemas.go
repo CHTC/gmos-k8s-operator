@@ -72,7 +72,7 @@ func makeDataSecretTemplate(glideinSet *gmosv1alpha1.GlideinSet) (template DataS
 	listing, err := os.ReadDir(filepath.Join(manifest.RepoPath, manifest.Volume.Src))
 	if err != nil && errors.Is(err, os.ErrNotExist) {
 		// Corner case where operator hasn't cloned local copies yet, nothing to do
-		return
+		return template, nil
 
 	} else if err != nil {
 		return
