@@ -17,7 +17,7 @@ spec:
         sizeLimit: "5G"
   glideinSets:
   - name: small
-    size: 6
+    size: 1
     priorityClassName: low-priority
     tolerations:
     - key: "foo"

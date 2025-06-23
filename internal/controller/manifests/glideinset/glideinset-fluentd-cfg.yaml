@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .ObjectMeta.Name }}-fluentd-config
+  name: {{ .ObjectMeta.Name }}-fluentd-cfg
   namespace: {{ .ObjectMeta.Namespace }}
   labels:
     component: fluentd
@@ -9,9 +9,12 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /var/log/chtc-logger.log
+      path /pilot/log/*Log*,/pilot/log/supervisord.log
       pos_file /tmp/app.logs.pos
       tag app.logs
+      <parse>
+        @type none
+      </parse>
     </source>
 
     <filter app.logs>

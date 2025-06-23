@@ -71,7 +71,7 @@ type GlideinSetSpec struct {
 	Name string `json:"name"`
 
 	// Name of the GlideinSetCollection to which this GlideinSet belongs
-	ParentName string `json:"parentName"`
+	ParentName string `json:"parentName,omitempty"`
 
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`

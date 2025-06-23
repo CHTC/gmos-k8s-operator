@@ -239,7 +239,6 @@ spec:
                 type: array
             required:
             - name
-            - parentName
             type: object
           status:
             description: GlideinSetStatus defines the observed state of GlideinSet

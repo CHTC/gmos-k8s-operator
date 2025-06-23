@@ -213,7 +213,7 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 }
 
 //go:embed manifests/glideinset/glideinset-deployment.yaml
-//go:embed manifests/glideinset/glideinset-fluentd-config.yaml
+//go:embed manifests/glideinset/glideinset-fluentd-cfg.yaml
 var glideinsetManifests embed.FS
 
 //go:embed manifests/glideinset/glideinset-data-secret.yaml

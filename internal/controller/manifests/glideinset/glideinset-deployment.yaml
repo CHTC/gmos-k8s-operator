@@ -59,15 +59,15 @@ spec:
         {{ end }}
         - mountPath: /mnt/collector-tokens
           name: collector-tokens
-        - mountPath: /pilot/log
-          name: logs-volume
+        - mountPath: /pilot
+          name: pilot-volume
       
       # Sidecar container that forwards glidein logs
       - name: logging-agent
         image: hub.opensciencegrid.org/mwestphall/fluentd
         volumeMounts:
-        - mountPath: /pilot/log
-          name: logs-volume
+        - mountPath: /pilot
+          name: pilot-volume
         - mountPath: /fluentd/etc
           name: fluentd-config
 
@@ -104,9 +104,8 @@ spec:
           secretName: '{{.ObjectMeta.Name}}-collector-tokens'
       # Logging Config
       - name: fluentd-config
-        secret:
-          defaultMode: 420
-          secretName: '{{.ObjectMeta.Name}}-data'
-      - name: logs-volume
+        configMap:
+          name: '{{.ObjectMeta.Name}}-fluentd-cfg'
+      - name: pilot-volume
         emptyDir: {}
       
