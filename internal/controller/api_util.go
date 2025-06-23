@@ -172,3 +172,19 @@ func createRuntimeObjectIfNotExists(
 	}
 	return nil
 }
+
+func createOrUpdateTemplatedResource(reconcileState *PilotSetReconcileState, templateYaml string, templateData any) error {
+	genericEditor := &TemplatedResourceEditor{templateData: templateData, templateYaml: templateYaml}
+	val, err := genericEditor.getInitialResourceValue()
+	if err != nil {
+		return err
+	}
+	if err := applyUpdateToResource(reconcileState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
+		if err := createResourceIfNotExists(reconcileState, RNBase, val, genericEditor); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	return nil
+}

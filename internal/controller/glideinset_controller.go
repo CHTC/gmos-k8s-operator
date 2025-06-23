@@ -186,12 +186,6 @@ func (pr *PilotSetReconcileState) applyTokensUpdate(glindeinToken string, pilotT
 	return errors.Join(err, err2)
 }
 
-//go:embed manifests/glideinset/glideinset-deployment.yaml
-var glideinsetDeployment string
-
-//go:embed manifests/glideinset/glideinset-data-secret.yaml
-var glideinsetDataSecret string
-
 // Create the set of resources associated with a single Glidein deployment
 // - Secret containing access tokens from the local Collector
 // - Secret containing data files from the upstream Git repo
@@ -217,6 +211,12 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	return nil
 }
 
+//go:embed manifests/glideinset/glideinset-deployment.yaml
+var glideinsetDeployment string
+
+//go:embed manifests/glideinset/glideinset-data-secret.yaml
+var glideinsetDataSecret string
+
 // Update the set of resources associated with a GlideinSet based on changes to its RemoteManifest
 // field supplied from the upstream Git repo
 // - Update the Deployment with the image, environment, and volume mounts supplied from Git
@@ -227,17 +227,7 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 
 	log.Info("Updating Deployment with changes to CR")
 
-	genericEditor := &TemplatedResourceEditor{templateData: glideinSet, templateYaml: glideinsetDeployment}
-	val, err := genericEditor.getInitialResourceValue()
-	if err != nil {
-		return err
-	}
-
-	if err := applyUpdateToResource(glState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
-		if err := createResourceIfNotExists(glState, RNBase, val, genericEditor); err != nil {
-			return err
-		}
-	} else if err != nil {
+	if err := createOrUpdateTemplatedResource(glState, glideinsetDeployment, glideinSet); err != nil {
 		return err
 	}
 
@@ -246,17 +236,7 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	genericEditor = &TemplatedResourceEditor{templateData: templateData, templateYaml: glideinsetDataSecret}
-	val, err = genericEditor.getInitialResourceValue()
-	if err != nil {
-		return err
-	}
-
-	if err := applyUpdateToResource(glState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
-		if err := createResourceIfNotExists(glState, RNBase, val, genericEditor); err != nil {
-			return err
-		}
-	} else if err != nil {
+	if err := createOrUpdateTemplatedResource(glState, glideinsetDataSecret, templateData); err != nil {
 		return err
 	}
 

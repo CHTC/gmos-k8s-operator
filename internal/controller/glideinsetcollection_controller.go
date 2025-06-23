@@ -238,16 +238,7 @@ func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.
 		return err
 	}
 	for _, templateYaml := range yamlTemplates {
-		genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: templateYaml}
-		val, err := genericEditor.getInitialResourceValue()
-		if err != nil {
-			return err
-		}
-		if err := applyUpdateToResource(psState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
-			if err := createResourceIfNotExists(psState, RNBase, val, genericEditor); err != nil {
-				return err
-			}
-		} else if err != nil {
+		if err := createOrUpdateTemplatedResource(psState, templateYaml, pilotSet); err != nil {
 			return err
 		}
 	}
@@ -269,16 +260,7 @@ func createLogAggregationForPilotSet(r *GlideinSetCollectionReconciler, ctx cont
 		return err
 	}
 	for _, templateYaml := range yamlTemplates {
-		genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: templateYaml}
-		val, err := genericEditor.getInitialResourceValue()
-		if err != nil {
-			return err
-		}
-		if err := applyUpdateToResource(psState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
-			if err := createResourceIfNotExists(psState, RNBase, val, genericEditor); err != nil {
-				return err
-			}
-		} else if err != nil {
+		if err := createOrUpdateTemplatedResource(psState, templateYaml, pilotSet); err != nil {
 			return err
 		}
 	}
