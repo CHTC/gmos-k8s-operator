@@ -37,7 +37,7 @@ var formatFuncs map[string]interface{} = map[string]interface{}{
 	"nindent": func(indentCount int, input string) string {
 		indent := strings.Repeat(" ", indentCount)
 		lines := strings.SplitAfter(input, "\n")
-		return strings.Join(lines, indent)
+		return strings.Join(append([]string{"\n"}, lines...), indent)
 	},
 	"base64": base64.StdEncoding.EncodeToString,
 }
