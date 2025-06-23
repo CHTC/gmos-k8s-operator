@@ -70,16 +70,15 @@ type GlideinSetSpec struct {
 	// Name of this glidein deployment
 	Name string `json:"name"`
 
+	// Name of the GlideinSetCollection to which this GlideinSet belongs
+	ParentName string `json:"parentName"`
+
 	// size is the count of pilots to include in this set
 	Size int32 `json:"size,omitempty"`
 
 	// glideinManagerUrl is the url of the glidein manager from which to pull config for this
 	// set of pilots.
 	GlideinManagerUrl string `json:"glideinManagerUrl,omitempty"`
-
-	// localCollectorURL is the url of the htcondor collector set up by the operator
-	// in the same namespace as the glideins
-	LocalCollectorUrl string `json:"localCollectorUrl,omitempty"`
 
 	// resource requests and limits for glidein pods
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`

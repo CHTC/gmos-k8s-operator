@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"embed"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -212,7 +213,8 @@ func createResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 }
 
 //go:embed manifests/glideinset/glideinset-deployment.yaml
-var glideinsetDeployment string
+//go:embed manifests/glideinset/glideinset-fluentd-config.yaml
+var glideinsetManifests embed.FS
 
 //go:embed manifests/glideinset/glideinset-data-secret.yaml
 var glideinsetDataSecret string
@@ -227,8 +229,14 @@ func updateResourcesForGlideinSet(r *GlideinSetReconciler, ctx context.Context, 
 
 	log.Info("Updating Deployment with changes to CR")
 
-	if err := createOrUpdateTemplatedResource(glState, glideinsetDeployment, glideinSet); err != nil {
+	yamlTemplates, err := readManifestsFromFS(glideinsetManifests, ".")
+	if err != nil {
 		return err
+	}
+	for _, template := range yamlTemplates {
+		if err := createOrUpdateTemplatedResource(glState, template, glideinSet); err != nil {
+			return err
+		}
 	}
 
 	log.Info("Updating Data Secret with changes to RemoteManifest")

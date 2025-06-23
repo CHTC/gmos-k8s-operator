@@ -24,6 +24,7 @@ spec:
         gmos.chtc.wisc.edu/app: pilot
     spec:
       containers:
+      # Main glidein container
       - name: backfill
         {{ if .RemoteManifest }}
 
@@ -37,6 +38,7 @@ spec:
 
         {{ else }}
 
+        # Default image for an unconfigured glidein
         image: alpine:latest
         command:
         - sleep
@@ -45,8 +47,6 @@ spec:
         {{ end }}
         resources:
           {{ .Spec.Resources | toYaml | nindent 10}}
-        securityContext:
-          privileged: true
         volumeMounts:
         {{ if .RemoteManifest }}
         - mountPath: {{ .RemoteManifest.Volume.Dst }}
@@ -59,10 +59,21 @@ spec:
         {{ end }}
         - mountPath: /mnt/collector-tokens
           name: collector-tokens
-      dnsPolicy: ClusterFirst
-      priorityClassName: low-priority
+        - mountPath: /pilot/log
+          name: logs-volume
+      
+      # Sidecar container that forwards glidein logs
+      - name: logging-agent
+        image: hub.opensciencegrid.org/mwestphall/fluentd
+        volumeMounts:
+        - mountPath: /pilot/log
+          name: logs-volume
+        - mountPath: /fluentd/etc
+          name: fluentd-config
+
+      priorityClassName: {{ .Spec.PriorityClassName }}
       restartPolicy: Always
-      schedulerName: default-scheduler
+      # Security config
       {{ if .RemoteManifest }}
       securityContext:
         fsGroup: {{ .RemoteManifest.Security.Group }}
@@ -70,20 +81,32 @@ spec:
         runAsNonRoot: true
         runAsUser: {{ .RemoteManifest.Security.User }}
       {{ end }}
+      # Tolerations/NodeSelector supplied directly by parent
       tolerations:
         {{ .Spec.Tolerations | toYaml | nindent 8 }}
       nodeSelector:
         {{ .Spec.NodeSelector | toYaml | nindent 8 }}
       volumes:
+      # Secret containing config file data supplied from upstream git config
       - name: gmos-data
         secret:
           defaultMode: 420
           secretName: '{{.ObjectMeta.Name}}-data'
+      # Secret containing auth tokens supplied by upstream glidein manager
       - name: gmos-secrets
         secret:
           defaultMode: 420
           secretName: '{{.ObjectMeta.Name}}-tokens'
+      # Secret containing IDTokens supplied by the namespace-local collector
       - name: collector-tokens
         secret:
           defaultMode: 420
           secretName: '{{.ObjectMeta.Name}}-collector-tokens'
+      # Logging Config
+      - name: fluentd-config
+        secret:
+          defaultMode: 420
+          secretName: '{{.ObjectMeta.Name}}-data'
+      - name: logs-volume
+        emptyDir: {}
+      

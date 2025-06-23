@@ -311,7 +311,7 @@ func recoincileGlideinSets(pilotSet *gmosv1alpha1.GlideinSetCollection, psState 
 	// Create/update all present GlideinSets
 	for _, glideinSetSpec := range pilotSet.Spec.GlideinSets {
 		glideinSetSpec.GlideinManagerUrl = pilotSet.Spec.GlideinManagerUrl
-		glideinSetSpec.LocalCollectorUrl = fmt.Sprintf("%v.%v.svc.cluster.local", RNCollector.nameFor(pilotSet), pilotSet.GetNamespace())
+		glideinSetSpec.ParentName = pilotSet.GetName()
 		gsResource := ResourceName("-" + glideinSetSpec.Name)
 		// TODO this double dips API calls by checking for existence on update then checking again on create
 		creator := &GlideinSetCreator{spec: &glideinSetSpec}

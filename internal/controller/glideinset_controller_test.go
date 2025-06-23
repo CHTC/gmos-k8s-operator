@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path"
 
@@ -222,7 +221,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 						Name:              resourceName,
 						Size:              5,
 						GlideinManagerUrl: glideinManagerUrl,
-						LocalCollectorUrl: fmt.Sprintf("%v.%v.svc.cluster.local", parentResourceName+string(RNCollector), "default"),
+						ParentName:        parentResourceName,
 					},
 					RemoteManifest: upstreamConfig,
 				}

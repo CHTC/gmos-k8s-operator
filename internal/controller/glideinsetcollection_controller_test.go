@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -480,8 +479,7 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			spec := glideinSet.Spec
 			baseSpec := glideinManagerResource.Spec
 
-			collectorSvcName := fmt.Sprintf("%v.%v.svc.cluster.local", resourceName+string(RNCollector), "default")
-			Expect(spec.LocalCollectorUrl).Should(Equal(collectorSvcName))
+			Expect(spec.ParentName).Should(Equal(resourceName))
 			Expect(spec.GlideinManagerUrl).Should(Equal(baseSpec.GlideinManagerUrl))
 			Expect(spec.Size).Should(Equal(baseSpec.GlideinSets[0].Size))
 			Expect(spec.PriorityClassName).Should(Equal(baseSpec.GlideinSets[0].PriorityClassName))
