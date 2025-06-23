@@ -36,7 +36,7 @@ import (
 	gmosv1alpha1 "github.com/chtc/gmos-k8s-operator/api/v1alpha1"
 )
 
-var _ = Describe("GlideinSetCollection Controller", Focus, func() {
+var _ = Describe("GlideinSetCollection Controller", func() {
 	Context("When reconciling a resource with no GlideinSets", func() {
 		const resourceName = "test-empty-pilotset"
 

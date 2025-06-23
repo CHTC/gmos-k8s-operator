@@ -255,6 +255,37 @@ func createMonitoringForPilotSet(r *GlideinSetCollectionReconciler, ctx context.
 	return nil
 }
 
+//go:embed manifests/log-aggregator/*.yaml
+var logAggregationManifests embed.FS
+
+func createLogAggregationForPilotSet(r *GlideinSetCollectionReconciler, ctx context.Context, pilotSet *gmosv1alpha1.GlideinSetCollection) error {
+	// Collector resources
+	log := log.FromContext(ctx)
+	log.Info("Updating FluentD Log Aggregator if exists, creating otherwise")
+	psState := &PilotSetReconcileState{reconciler: r, ctx: ctx, resource: pilotSet}
+
+	yamlTemplates, err := readManifestsFromFS(logAggregationManifests, ".")
+	if err != nil {
+		return err
+	}
+	for _, templateYaml := range yamlTemplates {
+		genericEditor := &TemplatedResourceEditor{templateData: pilotSet, templateYaml: templateYaml}
+		val, err := genericEditor.getInitialResourceValue()
+		if err != nil {
+			return err
+		}
+		if err := applyUpdateToResource(psState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
+			if err := createResourceIfNotExists(psState, RNBase, val, genericEditor); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Create the base set of resources for a GlideinSetCollection:
 // - A Collector Deployment with associated config and service
 // - A Prometheus monitoring instance with associated
@@ -271,6 +302,11 @@ func createResourcesForPilotSet(r *GlideinSetCollectionReconciler, ctx context.C
 
 	// Monitoring Resources
 	if err := createMonitoringForPilotSet(r, ctx, pilotSet); err != nil {
+		return err
+	}
+
+	// Log aggregation Resources
+	if err := createLogAggregationForPilotSet(r, ctx, pilotSet); err != nil {
 		return err
 	}
 

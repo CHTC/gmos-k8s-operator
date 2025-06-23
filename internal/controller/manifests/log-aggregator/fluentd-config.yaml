@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: '{{.ObjectMeta.Name}}-fluentd-cfg'
+  labels:
+    component: fluentd
+data:
+  fluent.conf: |
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+      tag app.logs
+    </source>
+
+    <match app.logs>
+      @type rewrite_tag_filter
+      <rule>
+        key hostname
+        pattern /(.*)/
+        tag ${tag}.$1
+      </rule>
+    </match>
+
+    <match app.logs.*>
+      @type copy
+      <store>
+        @type file
+        path /var/log/fluentd/go-app/${tag}/glidein.log
+        compress gzip
+        append true
+        <buffer tag>
+          path /var/log/fluentd/buf/
+          timekey 5m
+          timekey_use_utc true
+          timekey_wait 2m
+        </buffer>
+      </store>
+    </match>

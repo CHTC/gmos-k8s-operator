@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{.ObjectMeta.Name}}-fluentd'
+  labels:
+    component: fluentd
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: fluentd
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        component: fluentd
+    spec:
+      containers:
+        - name: fluentd
+          image: hub.opensciencegrid.org/mwestphall/fluentd
+          resources:
+            {{ if .Spec.Fluentd.Resources }}
+            {{ .Spec.Fluentd.Resources | toYaml | nindent 12 }} 
+            {{ else }} 
+            requests:
+              memory: 500Mi
+              cpu: '0.5'
+            limits:
+              memory: 1Gi
+              cpu: '2'
+            {{ end }} 
+          volumeMounts:
+            - name: fluentd-config
+              mountPath: /fluentd/etc
+            {{ if .Spec.Fluentd.StorageVolume }}
+            - name: log-storage
+              mountPath: /var/log/fluentd/
+            {{ end }} 
+      volumes:
+        - name: fluentd-config
+          configMap:
+            name: '{{.ObjectMeta.Name}}-fluentd-config'
+        {{ with .Spec.Fluentd.StorageVolume }}
+        - name: log-storage
+          {{ toYaml . | nindent 10 }}
+        {{ end }}
