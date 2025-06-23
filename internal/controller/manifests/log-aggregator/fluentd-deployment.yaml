@@ -40,7 +40,7 @@ spec:
       volumes:
         - name: fluentd-config
           configMap:
-            name: '{{.ObjectMeta.Name}}-fluentd-config'
+            name: '{{.ObjectMeta.Name}}-fluentd-cfg'
         {{ with .Spec.Fluentd.StorageVolume }}
         - name: log-storage
           {{ toYaml . | nindent 10 }}

@@ -331,8 +331,13 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			Namespace: "default",
 		}
 
+		fluentdConfigName := types.NamespacedName{
+			Name:      resourceName + "-fluentd-cfg",
+			Namespace: "default",
+		}
+
 		BeforeAll(func() {
-			By("creating the custom resource for the Kind GlideinSetCollection with Prometheus Config")
+			By("creating the custom resource for the Kind GlideinSetCollection with FluentD Config")
 			err := k8sClient.Get(ctx, typeNamespacedName, glideinsetcollection)
 			if err != nil && errors.IsNotFound(err) {
 				Expect(k8sClient.Create(ctx, glideinManagerResource)).To(Succeed())
@@ -374,6 +379,11 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 
 			fluentdSvc := corev1.Service{}
 			err = k8sClient.Get(ctx, fluentdName, &fluentdSvc)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating a Fluentd ConfigMap")
+			fluentdCfg := corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, fluentdConfigName, &fluentdCfg)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
