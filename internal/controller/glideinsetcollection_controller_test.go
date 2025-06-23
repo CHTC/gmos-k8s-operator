@@ -385,6 +385,17 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			fluentdCfg := corev1.ConfigMap{}
 			err = k8sClient.Get(ctx, fluentdConfigName, &fluentdCfg)
 			Expect(err).NotTo(HaveOccurred())
+
+			By("Setting the resource requests for the Fluentd Deployment")
+			spec := fluentdDep.Spec.Template.Spec.Containers[0]
+			baseSpec := glideinManagerResource.Spec.Fluentd
+			// Default equality doesn't appear to work here, need to use the custom resource.Quantity equals
+			Expect(spec.Resources.Requests.Cpu().Equal(*baseSpec.Resources.Requests.Cpu())).Should(BeTrue())
+			Expect(spec.Resources.Requests.Memory().Equal(*baseSpec.Resources.Requests.Memory())).Should(BeTrue())
+
+			By("Setting the storage volume for the Fluentd Deployment")
+			volumes := fluentdDep.Spec.Template.Spec.Volumes
+			Expect(volumes[1].PersistentVolumeClaim.ClaimName).To(Equal(baseSpec.StorageVolume.PersistentVolumeClaim.ClaimName))
 		})
 	})
 

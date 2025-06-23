@@ -33,15 +33,16 @@ spec:
           volumeMounts:
             - name: fluentd-config
               mountPath: /fluentd/etc
-            {{ if .Spec.Fluentd.StorageVolume }}
             - name: log-storage
               mountPath: /var/log/fluentd/
-            {{ end }} 
       volumes:
         - name: fluentd-config
           configMap:
             name: '{{.ObjectMeta.Name}}-fluentd-cfg'
-        {{ with .Spec.Fluentd.StorageVolume }}
+        {{ if .Spec.Fluentd.StorageVolume }}
         - name: log-storage
-          {{ toYaml . | nindent 10 }}
+          {{ toYaml .Spec.Fluentd.StorageVolume | nindent 10 }}
+        {{ else }}
+        - name: log-storage
+          emptyDir: {}
         {{ end }}
