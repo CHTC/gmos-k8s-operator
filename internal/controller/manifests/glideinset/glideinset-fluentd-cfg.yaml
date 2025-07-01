@@ -21,6 +21,7 @@ data:
       @type record_transformer
       <record>
         hostname "#{Socket.gethostname}"
+        timestamp "${time}"
       </record>
     </filter>
 

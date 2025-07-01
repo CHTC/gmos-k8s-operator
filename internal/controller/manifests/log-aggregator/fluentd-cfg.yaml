@@ -26,7 +26,7 @@ data:
       @type copy
       <store>
         @type file
-        path /var/log/fluentd/${tag}/glidein.log
+        path /var/log/fluentd/glideins/${tag}/glidein
         compress gzip
         append true
         <buffer tag>
