@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: fluentd
-          image: hub.opensciencegrid.org/mwestphall/fluentd
+          image: hub.opensciencegrid.org/mwestphall/fluentd:latest
           resources:
             {{ if .Spec.Fluentd.Resources }}
             {{ .Spec.Fluentd.Resources | toYaml | nindent 12 }} 
