@@ -5,6 +5,7 @@ import "path"
 // Config for a single namespace provided by an upstream glidein manager git repo
 type PilotSetNamespaceConfig struct {
 	Namespace    string               `yaml:"namespace" json:"namespace,omitempty"`
+	Name         string               `yaml:"name" json:"name,omitempty"`
 	Image        string               `yaml:"image" json:"image"`
 	Security     PilotSetSecurity     `yaml:"security" json:"security,omitempty"`
 	Volume       PilotSetVolumeMount  `yaml:"volume" json:"volume,omitempty"`

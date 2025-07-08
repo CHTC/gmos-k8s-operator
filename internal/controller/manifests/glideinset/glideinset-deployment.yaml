@@ -35,6 +35,7 @@ spec:
         env:
           {{ .RemoteManifest.Env | toYaml | nindent 10 }}
         image: {{ .RemoteManifest.Image }}
+        imagePullPolicy: Always
 
         {{ else }}
 

@@ -9,7 +9,7 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /pilot/log/*Log*,/pilot/log/supervisord.log
+      path /pilot/log/*Log*,/pilot/log/supervisord.log,/pilot/startlog/*Log*
       pos_file /tmp/app.logs.pos
       tag app.logs
       <parse>

@@ -1,0 +1,32 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    component: fluentd-viewer
+  name: fluentd-viewer
+  namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: fluentd-viewer
+  template:
+    metadata:
+      labels:
+        component: fluentd-viewer
+    spec:
+      containers:
+      - image: hub.opensciencegrid.org/mwestphall/log-tool-notebook
+        imagePullPolicy: Always
+        name: fluentd-viewer
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/log/fluentd/
+          name: log-storage
+      volumes:
+      - name: log-storage
+        persistentVolumeClaim:
+          claimName: logs-pvc

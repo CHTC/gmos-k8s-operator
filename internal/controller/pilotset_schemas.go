@@ -36,7 +36,7 @@ func labelsForPilotSet(name string) map[string]string {
 	}
 }
 
-func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string) (config gmosv1alpha1.PilotSetNamespaceConfig, err error) {
+func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string, name string) (config gmosv1alpha1.PilotSetNamespaceConfig, err error) {
 	manifest := &PilotSetManifiest{}
 	data, err := os.ReadFile(filepath.Join(gitUpdate.Path, "glidein-manifest.yaml"))
 	if err != nil {
@@ -47,7 +47,7 @@ func readManifestForNamespace(gitUpdate gmosClient.RepoUpdate, namespace string)
 		return
 	}
 	for _, config := range manifest.Manifests {
-		if config.Namespace == namespace {
+		if config.Namespace == namespace && (config.Name == "" || config.Name == name) {
 			return config, nil
 		}
 	}
@@ -158,7 +158,7 @@ type GlideinSetGitUpdater struct {
 }
 
 func (gu *GlideinSetGitUpdater) updateResourceValue(r Reconciler, glideinSet *gmosv1alpha1.GlideinSet) (bool, error) {
-	config, err := readManifestForNamespace(*gu.gitUpdate, glideinSet.Namespace)
+	config, err := readManifestForNamespace(*gu.gitUpdate, glideinSet.Namespace, glideinSet.Spec.Name)
 	if err != nil {
 		return false, err
 	}

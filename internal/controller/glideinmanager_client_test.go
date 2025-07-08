@@ -163,7 +163,7 @@ var _ = Describe("Glidein Manager Watcher Test", Ordered, func() {
 
 			// Fields from the manifest file
 			// Probably should explicitly specify expected values rather than relying on manifest file
-			manifest, err := readManifestForNamespace(repoUpdate, "default")
+			manifest, err := readManifestForNamespace(repoUpdate, "default", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(currentUpdate.Image).To(Equal(manifest.Image))

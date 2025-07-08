@@ -174,6 +174,7 @@ func createRuntimeObjectIfNotExists(
 }
 
 func createOrUpdateTemplatedResource(reconcileState *PilotSetReconcileState, templateYaml string, templateData any) error {
+	log := log.FromContext(reconcileState.ctx)
 	genericEditor := &TemplatedResourceEditor{templateData: templateData, templateYaml: templateYaml}
 	val, err := genericEditor.getInitialResourceValue()
 	if err != nil {
@@ -181,9 +182,11 @@ func createOrUpdateTemplatedResource(reconcileState *PilotSetReconcileState, tem
 	}
 	if err := applyUpdateToResource(reconcileState, RNBase, val, genericEditor); apierrors.IsNotFound(err) {
 		if err := createResourceIfNotExists(reconcileState, RNBase, val, genericEditor); err != nil {
+			log.Error(err, string(genericEditor.parsedYaml))
 			return err
 		}
 	} else if err != nil {
+		log.Error(err, string(genericEditor.parsedYaml))
 		return err
 	}
 	return nil
