@@ -212,6 +212,7 @@ func (in *GlideinSetList) DeepCopyObject() runtime.Object {
 func (in *GlideinSetSpec) DeepCopyInto(out *GlideinSetSpec) {
 	*out = *in
 	in.Resources.DeepCopyInto(&out.Resources)
+	in.SecurityContext.DeepCopyInto(&out.SecurityContext)
 	if in.NodeSelector != nil {
 		in, out := &in.NodeSelector, &out.NodeSelector
 		*out = make(map[string]string, len(*in))

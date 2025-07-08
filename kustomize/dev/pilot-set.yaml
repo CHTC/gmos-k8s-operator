@@ -43,13 +43,12 @@ spec:
   - name: medium
     size: 1
     priorityClassName: medium-priority
-    tolerations:
-    - key: "foo"
-      operator: "Equal"
-      value: "bar"
-      effect: "NoSchedule"
-    nodeSelector:
-      kubernetes.io/hostname: minikube
+    securityContext:
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: Unconfined
+      appArmorProfile:
+        type: Unconfined
     resources:
       requests:
         cpu: "400m"
@@ -57,3 +56,4 @@ spec:
       limits:
         cpu: "400m"
         memory: "200M"
+        nextflow.io/fuse: 1

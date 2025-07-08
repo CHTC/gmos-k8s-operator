@@ -37,6 +37,11 @@ spec:
         image: {{ .RemoteManifest.Image }}
         imagePullPolicy: Always
 
+        {{ if .Spec.SecurityContext }}
+        securityContext:
+          {{ .Spec.SecurityContext | toYaml | nindent 10 }}
+        {{ end }}
+
         {{ else }}
 
         # Default image for an unconfigured glidein

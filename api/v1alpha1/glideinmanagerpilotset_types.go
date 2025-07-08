@@ -83,6 +83,9 @@ type GlideinSetSpec struct {
 	// resource requests and limits for glidein pods
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
+	// SecurityContext for gldiein pods
+	SecurityContext corev1.SecurityContext `json:"securityContext,omitempty"`
+
 	// PriorityClass for glidein pods
 	PriorityClassName string `json:"priorityClassName,omitempty"`
 
