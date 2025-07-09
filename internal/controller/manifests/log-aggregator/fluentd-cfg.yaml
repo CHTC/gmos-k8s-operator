@@ -13,13 +13,6 @@ data:
       tag app.logs
     </source>
 
-    <filter app.logs>
-      @type record_modifier
-      <record>
-        time_bucket ${Time.at(time).strftime("%Y-%m")}
-      </record>
-    </filter>
-
     <match app.logs>
       @type rewrite_tag_filter
       <rule>
@@ -33,14 +26,15 @@ data:
       @type copy
       <store>
         @type file
-        path /var/log/fluentd/glideins/${time_bucket}/${tag}/glidein
+        path /var/log/fluentd/glideins/%Y/%m/%d/${tag}
         compress gzip
         append true
-        <buffer time_bucket, tag>
-          path /var/log/fluentd/buf/
-          timekey 5m
+        <buffer time, tag>
+          timekey 1d
           timekey_use_utc true
           timekey_wait 2m
+          flush_mode interval
+          flush_interval 180s
         </buffer>
       </store>
     </match>
