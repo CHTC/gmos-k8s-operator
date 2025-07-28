@@ -20,7 +20,9 @@ data:
     <filter app.logs>
       @type record_transformer
       <record>
-        hostname "#{Socket.gethostname}"
+        pod "#{Socket.gethostname}"
+        type "{{ .Spec.Name }}"
+        glideinset "{{ .Spec.ParentName }}"
         timestamp "${time}"
       </record>
     </filter>

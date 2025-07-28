@@ -8,7 +8,5 @@ bases:
 resources:
   - namespace.yaml
   - pilot-set.yaml
-#  - glidein-set.yaml
   - priorityclasses.yaml
   - log-pv.yaml
-  - logs-notebook.yaml

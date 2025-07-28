@@ -16,6 +16,8 @@ spec:
       labels:
         component: fluentd
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
         - name: fluentd
           image: hub.opensciencegrid.org/mwestphall/fluentd:latest
@@ -30,11 +32,36 @@ spec:
               memory: 1Gi
               cpu: '2'
             {{ end }} 
+          ports:
+            - containerPort: 24224
+              protocol: TCP
           volumeMounts:
             - name: fluentd-config
               mountPath: /fluentd/etc
             - name: log-storage
               mountPath: /var/log/fluentd/
+        - name: fluentd-viewer
+          image: hub.opensciencegrid.org/mwestphall/log-tool-notebook
+          imagePullPolicy: Always
+          resources:
+            {{ if .Spec.Fluentd.Resources }}
+            {{ .Spec.Fluentd.Resources | toYaml | nindent 12 }} 
+            {{ else }} 
+            requests:
+              memory: 500Mi
+              cpu: '0.5'
+            limits:
+              memory: 1Gi
+              cpu: '2'
+            {{ end }} 
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          ports:
+            - containerPort: 8888
+              protocol: TCP
+          volumeMounts:
+          - mountPath: /var/log/fluentd/
+            name: log-storage
       volumes:
         - name: fluentd-config
           configMap:

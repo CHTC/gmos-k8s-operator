@@ -16,7 +16,7 @@ data:
     <match app.logs>
       @type rewrite_tag_filter
       <rule>
-        key hostname
+        key pod
         pattern /(.*)/
         tag ${tag}.$1
       </rule>
