@@ -28,14 +28,23 @@ spec:
       - name: backfill
         {{ if .RemoteManifest }}
 
-        {{ if .RemoteManifest.Command }}
-        command:
-          {{ .RemoteManifest.Command | toYaml | nindent 10 }}
-        {{ end }}
         env:
           {{ .RemoteManifest.Env | toYaml | nindent 10 }}
         image: {{ .RemoteManifest.Image }}
         imagePullPolicy: Always
+        lifecycle:
+          preStop:
+            exec:
+              command:
+                - sh
+                - -c
+                - echo 'Recieved SIGTERM from k8s controller' >> /pilot/log/MasterLog
+
+
+        {{ if .RemoteManifest.Command }}
+        command:
+          {{ .RemoteManifest.Command | toYaml | nindent 10 }}
+        {{ end }}
 
         {{ if .Spec.SecurityContext }}
         securityContext:
@@ -68,9 +77,11 @@ spec:
         - mountPath: /pilot
           name: pilot-volume
       
+      initContainers:
       # Sidecar container that forwards glidein logs
       - name: logging-agent
         image: hub.opensciencegrid.org/mwestphall/fluentd
+        restartPolicy: Always
         volumeMounts:
         - mountPath: /pilot
           name: pilot-volume
