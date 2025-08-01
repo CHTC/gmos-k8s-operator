@@ -89,7 +89,7 @@ spec:
           name: fluentd-config
 
       priorityClassName: {{ .Spec.PriorityClassName }}
-      restartPolicy: Always
+      restartPolicy: Never
       # Security config
       {{ if .RemoteManifest }}
       securityContext:
