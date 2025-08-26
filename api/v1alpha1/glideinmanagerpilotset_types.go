@@ -94,6 +94,9 @@ type GlideinSetSpec struct {
 
 	// Tolerations for glidein pods
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// A VolumeSource for the Glidein's scratch work directory
+	PilotVolume *corev1.VolumeSource `json:"pilotVolume,omitempty"`
 }
 
 // GlideinSetCollectionStatus defines the observed state of the GlideinSetCollection

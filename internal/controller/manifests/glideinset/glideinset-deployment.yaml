@@ -124,5 +124,9 @@ spec:
         configMap:
           name: '{{.ObjectMeta.Name}}-fluentd-cfg'
       - name: pilot-volume
+        {{ if .Spec.PilotVolume }}
+        {{ .Spec.PilotVolume | toYaml | nindent 8 }}
+        {{ else }}
         emptyDir: {}
+        {{ end }}
       

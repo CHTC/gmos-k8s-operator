@@ -10,3 +10,4 @@ resources:
   - pilot-set.yaml
   - priorityclasses.yaml
   - log-pv.yaml
+  - networkpolicy.yaml
