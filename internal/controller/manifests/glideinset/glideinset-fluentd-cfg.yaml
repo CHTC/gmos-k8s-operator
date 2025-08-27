@@ -21,7 +21,8 @@ data:
       @type record_transformer
       <record>
         pod "#{Socket.gethostname}"
-        type "{{ .Spec.Name }}"
+        node "#{ENV['K8S_NODE_NAME']}"
+        shape "{{ .Spec.Name }}"
         glideinset "{{ .Spec.ParentName }}"
         timestamp "${time}"
       </record>

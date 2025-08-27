@@ -165,7 +165,7 @@ var _ = Describe("GlideinSet Controller", Ordered, func() {
 	})
 })
 
-var _ = Describe("GlideinSetCollection Controller", func() {
+var _ = Describe("GlideinSetCollection Controller", Focus, func() {
 	Context("When reconciling a GlideinSet with upstream config", func() {
 		const parentResourceName = "test-configured"
 		const resourceName = parentResourceName + "-glideinset"
@@ -297,11 +297,37 @@ var _ = Describe("GlideinSetCollection Controller", func() {
 			err = k8sClient.Get(ctx, deploymentNamespacedName, deployment)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("Creating a VolumeMount for the ConfigMap containing upstream config files")
 			containerSpec := deployment.Spec.Template.Spec.Containers[0]
 			Expect(containerSpec.VolumeMounts[0].MountPath).To(Equal(upstreamConfig.Volume.Dst))
-			// TODO cannot figure out how to
+
+			By("Creating a VolumeMount for the Secret containing upstream tokens")
 			tokenDir := path.Dir(upstreamConfig.SecretSource.Dst)
 			Expect(containerSpec.VolumeMounts[1].MountPath).To(Equal(tokenDir))
+		})
+
+		It("Should create a log-forwarding sidecar", func() {
+			resource := gmosv1alpha1.GlideinSet{}
+			err := k8sClient.Get(ctx, typeNamespacedName, &resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			deploymentNamespacedName := types.NamespacedName{
+				Name:      RNBase.nameFor(&resource),
+				Namespace: "default",
+			}
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, deploymentNamespacedName, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			initContainerSpec := deployment.Spec.Template.Spec.InitContainers[0]
+
+			By("Adding pod spec info to the logger environment")
+			Expect(initContainerSpec.Env[0].Name).To(Equal("K8S_NODE_NAME"))
+			Expect(initContainerSpec.Env[0].ValueFrom.FieldRef.FieldPath).To(Equal("spec.nodeName"))
+
+			By("Volume-mounting the logger config into the container")
+			Expect(initContainerSpec.VolumeMounts[1].Name).To(Equal("fluentd-config"))
 		})
 	})
 })
